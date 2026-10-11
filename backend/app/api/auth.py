@@ -61,15 +61,18 @@ def me(user: User) -> dict:
 def sign_in(db, user: User, request: Request, response: Response, embedded: bool = False):
     token = users.create_session(db, user, request.headers.get("user-agent"))
     settings = get_settings()
+    # Secure whenever the visit came over https (the domain through the reverse proxy),
+    # plain over the home network's http address.
+    secure = settings.cookie_secure or request.url.scheme == "https"
     # Inside Telegram's web client the app runs in a frame: such cookies must be
     # SameSite=None (and therefore Secure) to reach us.
-    cross_site = embedded and settings.cookie_secure
+    cross_site = embedded and secure
     response.set_cookie(
         SESSION_COOKIE,
         token,
         max_age=settings.session_days * 86400,
         httponly=True,
-        secure=settings.cookie_secure,
+        secure=secure,
         samesite="none" if cross_site else "lax",
         partitioned=cross_site,
         path="/",

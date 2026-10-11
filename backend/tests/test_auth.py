@@ -157,3 +157,12 @@ def test_bot_login_by_someone_not_invited_fails_fast(admin, app):
     poll = {"code": started["code"], "poll_token": started["poll_token"]}
     # The waiting page learns at once instead of after ten minutes.
     assert browser.post("/api/auth/login-requests/poll", json=poll).json()["status"] == "rejected"
+
+
+def test_cookie_is_secure_over_https_only(admin, app):
+    over_https = TestClient(app, base_url="https://testserver")
+    response = over_https.post("/api/auth/telegram", json=widget_payload(1001, "Admin"))
+    assert "secure" in response.headers["set-cookie"].lower()
+    over_http = TestClient(app, base_url="http://testserver")
+    response = over_http.post("/api/auth/telegram", json=widget_payload(1001, "Admin"))
+    assert "secure" not in response.headers["set-cookie"].lower()
