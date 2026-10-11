@@ -25,12 +25,20 @@ backend (дом) ──ssh, ключ с forced command──▶ food-ai@VPS: foo
 
 ## 1. Codex CLI
 
-На VPS нужен Node.js 22+ (или готовый бинарник из релизов `openai/codex` на GitHub):
+Проще всего взять готовый бинарник из релизов `openai/codex` (Node.js не нужен) и сверить
+его SHA-256 с полем `digest` в API GitHub:
 
 ```sh
-sudo npm install -g @openai/codex
+V=rust-v0.162.1; A=codex-x86_64-unknown-linux-musl.tar.gz
+curl -sSLO "https://github.com/openai/codex/releases/download/$V/$A"
+curl -s "https://api.github.com/repos/openai/codex/releases/tags/$V" \
+  | python3 -c "import sys,json; print([a['digest'] for a in json.load(sys.stdin)['assets'] if a['name']=='$A'][0])"
+sha256sum "$A"   # должно совпасть с digest выше
+tar -xzf "$A" && sudo install -m 0755 codex-x86_64-unknown-linux-musl /usr/local/bin/codex
 codex --version
 ```
+
+Или через npm, если на VPS есть Node.js 22+: `sudo npm install -g @openai/codex`.
 
 ## 2. Пользователь и runner
 

@@ -30,6 +30,6 @@ if [ -n "$KEY" ]; then
 fi
 
 if ! command -v codex >/dev/null 2>&1; then
-    echo "Codex CLI is not installed yet: npm install -g @openai/codex (Node.js 22+)."
+    echo "Codex CLI is not installed yet: see docs/vps-codex.md (release binary or npm)."
 fi
 echo "Next: sudo -iu $RUNNER_USER env CODEX_HOME=$HOME_DIR/codex-home codex login --device-auth"

@@ -19,6 +19,8 @@ async def main():
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
+    # Every outbox poll would be an INFO line otherwise.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     session = AiohttpSession(proxy=settings.telegram_proxy) if settings.telegram_proxy else None
     bot = Bot(
         settings.telegram_bot_token,
