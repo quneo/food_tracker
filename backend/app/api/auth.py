@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Request, Response
 from pydantic import BaseModel, Field
 
-from app.api.deps import SESSION_COOKIE, CurrentUser, Db, Files
+from app.api.deps import SESSION_COOKIE, CurrentUser, Db, Files, purge_later
 from app.config import get_settings
 from app.core import telegram_auth
 from app.core.exceptions import DomainError
-from app.media import service as media
+from app.core.timeutil import utc_iso
 from app.users import service as users
 from app.users.models import User
 
@@ -46,7 +46,7 @@ def me(user: User) -> dict:
         "telegram_id": user.telegram_id,
         "is_admin": user.is_admin,
         "timezone": user.profile.timezone,
-        "created_at": user.created_at,
+        "created_at": utc_iso(user.created_at),
     }
 
 
@@ -144,11 +144,13 @@ def logout_everywhere(user: CurrentUser, db: Db):
 
 
 @router.delete("/account", status_code=204)
-def delete_account(data: DeleteAccount, user: CurrentUser, db: Db, files: Files):
+def delete_account(
+    data: DeleteAccount, user: CurrentUser, db: Db, files: Files, background: BackgroundTasks
+):
     if data.confirm.strip().lower() != "удалить":
         raise DomainError("Чтобы удалить аккаунт, напишите слово «удалить»")
     users.delete_account(db, user)
-    media.purge(db, files)
+    purge_later(background, db, files)
     response = Response(status_code=204)
     response.delete_cookie(SESSION_COOKIE, path="/")
     return response

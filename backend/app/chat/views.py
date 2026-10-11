@@ -129,7 +129,7 @@ def meal_view(meal: Meal, tz_name: str, day_total=None, target=None, deleting=Fa
 
 def confirm_view(action_id: int, summary: str) -> dict:
     return view(
-        f"❓ {summary}",
+        f"❓ {escape(summary)}",
         [[button("✅ Да", f"a:y:{action_id}"), button("✖️ Нет", f"a:n:{action_id}")]],
     )
 

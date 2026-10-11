@@ -2,13 +2,13 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from sqlalchemy import delete, select
 
 from app.ai import memory
 from app.api.deps import CurrentUser, Db
 from app.chat.models import ChatMessage, ChatState
-from app.core.timeutil import to_local, zone
+from app.core.timeutil import to_local, utc_iso, zone
 from app.database import utcnow
 
 router = APIRouter(tags=["memory"])
@@ -28,6 +28,10 @@ class FactOut(BaseModel):
     source: Literal["ai", "user"]
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer("created_at", "updated_at")
+    def utc(self, value: datetime) -> str | None:
+        return utc_iso(value)
 
 
 @router.get("/memory", response_model=list[FactOut])

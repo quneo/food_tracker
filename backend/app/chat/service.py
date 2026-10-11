@@ -69,6 +69,8 @@ def start(db: Session, info: dict, payload: str | None) -> dict:
     try:
         user, created = users.ensure_user(db, info, invite)
     except DomainError as error:
+        if payload.startswith("login_"):
+            users.refuse_login(db, payload[6:])
         return view(escape(error.message))
     if payload.startswith("login_"):
         request = users.pending_login(db, payload[6:])

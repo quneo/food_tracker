@@ -155,6 +155,13 @@ def answer_login(db: Session, code: str, user: User, approve: bool) -> bool:
     return True
 
 
+def refuse_login(db: Session, code: str):
+    request = pending_login(db, code)
+    if request:
+        request.status = "rejected"
+        db.commit()
+
+
 def poll_login(db: Session, code: str, poll_secret: str) -> tuple[str, User | None]:
     """-> (status, user once confirmed). A confirmed request is used up by the first poll."""
     request = db.scalar(select(LoginRequest).where(LoginRequest.code == code))

@@ -1,11 +1,10 @@
 from datetime import date
 
-from fastapi import APIRouter, File, Form, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, Response, UploadFile
 
-from app.api.deps import CurrentUser, Db, Files
+from app.api.deps import CurrentUser, Db, Files, purge_later
 from app.core.exceptions import DomainError
 from app.core.timeutil import local_today, zone
-from app.media import service as media
 from app.progress import service
 from app.progress.schemas import (
     MeasurementIn,
@@ -73,14 +72,9 @@ def add_measurement(data: MeasurementIn, user: CurrentUser, db: Db):
 @router.put("/measurements/{entry_id}", response_model=MeasurementOut)
 def update_measurement(entry_id: int, data: MeasurementIn, user: CurrentUser, db: Db):
     entry = service.owned_measurement(db, entry_id, user.id)
-    replacement = service.add_measurement(
-        db, user, data.kind, data.value, data.measured_at, data.note
-    )
-    if not data.measured_at:
-        replacement.measured_at, replacement.measured_on = entry.measured_at, entry.measured_on
-    db.delete(entry)
+    service.update_measurement(db, user, entry, data)
     db.commit()
-    return service.measurement_out(replacement, user)
+    return service.measurement_out(entry, user)
 
 
 @router.delete("/measurements/{entry_id}", status_code=204)
@@ -130,8 +124,10 @@ def update_photo(photo_id: int, data: PhotoPatch, user: CurrentUser, db: Db):
 
 
 @router.delete("/progress-photos/{photo_id}", status_code=204)
-def delete_photo(photo_id: int, user: CurrentUser, db: Db, files: Files):
+def delete_photo(
+    photo_id: int, user: CurrentUser, db: Db, files: Files, background: BackgroundTasks
+):
     service.delete_photo(db, service.owned_photo(db, photo_id, user.id))
     db.commit()
-    media.purge(db, files)
+    purge_later(background, db, files)
     return Response(status_code=204)

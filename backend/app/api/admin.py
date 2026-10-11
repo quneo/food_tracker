@@ -3,16 +3,16 @@ anyone's meals, photos, conversations or memory."""
 
 from datetime import timedelta
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, BackgroundTasks, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from app.ai.models import AiJob
-from app.api.deps import Admin, Db, Files
+from app.api.deps import Admin, Db, Files, purge_later
 from app.config import get_settings
 from app.core.exceptions import DomainError, NotFound
+from app.core.timeutil import utc_iso
 from app.database import utcnow
-from app.media import service as media
 from app.nutrition.models import Meal
 from app.users import service as users
 from app.users.models import Invite, User
@@ -37,8 +37,8 @@ def invite_out(invite: Invite) -> dict:
         "link": users.invite_link(invite),
         "max_uses": invite.max_uses,
         "uses": invite.uses,
-        "created_at": invite.created_at,
-        "expires_at": invite.expires_at,
+        "created_at": utc_iso(invite.created_at),
+        "expires_at": utc_iso(invite.expires_at),
         "revoked": invite.revoked_at is not None,
         "usable": invite.usable(utcnow()),
     }
@@ -55,8 +55,8 @@ def list_users(admin: Admin, db: Db):
             "username": user.telegram_username,
             "is_admin": user.is_admin,
             "is_blocked": user.is_blocked,
-            "created_at": user.created_at,
-            "last_seen_at": user.last_seen_at,
+            "created_at": utc_iso(user.created_at),
+            "last_seen_at": utc_iso(user.last_seen_at),
             "meals": meals.get(user.id, 0),
         }
         for user in rows
@@ -78,14 +78,14 @@ def update_user(user_id: int, data: UserPatch, admin: Admin, db: Db):
 
 
 @router.delete("/users/{user_id}", status_code=204)
-def delete_user(user_id: int, admin: Admin, db: Db, files: Files):
+def delete_user(user_id: int, admin: Admin, db: Db, files: Files, background: BackgroundTasks):
     user = db.get(User, user_id)
     if not user:
         raise NotFound("Пользователь не найден")
     if user.id == admin.id:
         raise DomainError("Свой аккаунт удаляется в профиле")
     users.delete_account(db, user)
-    media.purge(db, files)
+    purge_later(background, db, files)
     return Response(status_code=204)
 
 

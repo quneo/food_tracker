@@ -24,9 +24,21 @@ class Storage(Protocol):
 
 class S3Storage:
     def __init__(self, endpoint: str, access_key: str, secret_key: str, bucket: str, secure: bool):
+        import urllib3
         from minio import Minio
 
-        self.client = Minio(endpoint, access_key=access_key, secret_key=secret_key, secure=secure)
+        # Fail fast when storage is down instead of retrying for half a minute.
+        http = urllib3.PoolManager(
+            timeout=urllib3.Timeout(connect=3, read=30),
+            retries=urllib3.Retry(total=2, backoff_factor=0.2, status_forcelist=[502, 503, 504]),
+        )
+        self.client = Minio(
+            endpoint,
+            access_key=access_key,
+            secret_key=secret_key,
+            secure=secure,
+            http_client=http,
+        )
         self.bucket = bucket
         self._ready = False
 
@@ -40,11 +52,12 @@ class S3Storage:
 
     def _call(self, action, *args, **kwargs):
         from minio.error import MinioException
+        from urllib3.exceptions import HTTPError
 
         try:
             self._bucket()
             return action(*args, **kwargs)
-        except (MinioException, OSError) as error:
+        except (MinioException, HTTPError, OSError) as error:
             raise StorageError(str(error)) from error
 
     def put(self, key, data, content_type):

@@ -143,3 +143,17 @@ def test_person_helper_is_isolated(app):
     # Sanity check of the fixture itself: two people, two cookies.
     first = Person(app, 1001, "Admin")
     assert first.web.get("/api/auth/me").json()["telegram_id"] == 1001
+
+
+def test_bot_login_by_someone_not_invited_fails_fast(admin, app):
+    browser = TestClient(app, base_url="https://testserver")
+    started = browser.post("/api/auth/login-requests").json()
+    stranger = TestClient(app, base_url="https://testserver")
+    stranger.headers.update(bot_headers(9999))
+    view = stranger.post(
+        "/api/bot/start", json={"user": {"id": 9999}, "payload": f"login_{started['code']}"}
+    ).json()["view"]
+    assert "приглашению" in view["text"]
+    poll = {"code": started["code"], "poll_token": started["poll_token"]}
+    # The waiting page learns at once instead of after ten minutes.
+    assert browser.post("/api/auth/login-requests/poll", json=poll).json()["status"] == "rejected"

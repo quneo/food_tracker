@@ -1,9 +1,9 @@
 from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, File, Query, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Query, Response, UploadFile
 
-from app.api.deps import CurrentUser, Db, Files
+from app.api.deps import CurrentUser, Db, Files, purge_later
 from app.core.exceptions import DomainError
 from app.core.timeutil import local_today, zone
 from app.media import service as media
@@ -58,10 +58,10 @@ def confirm_meal(meal_id: int, user: CurrentUser, db: Db):
 
 
 @router.delete("/meals/{meal_id}", status_code=204)
-def delete_meal(meal_id: int, user: CurrentUser, db: Db, files: Files):
+def delete_meal(meal_id: int, user: CurrentUser, db: Db, files: Files, background: BackgroundTasks):
     service.delete(db, service.owned(db, meal_id, user.id))
     db.commit()
-    media.purge(db, files)
+    purge_later(background, db, files)
     return Response(status_code=204)
 
 
@@ -77,14 +77,21 @@ def add_photo(meal_id: int, user: CurrentUser, db: Db, files: Files, photo: Uplo
 
 
 @router.delete("/meals/{meal_id}/photos/{media_id}", response_model=MealOut)
-def delete_photo(meal_id: int, media_id: int, user: CurrentUser, db: Db, files: Files):
+def delete_photo(
+    meal_id: int,
+    media_id: int,
+    user: CurrentUser,
+    db: Db,
+    files: Files,
+    background: BackgroundTasks,
+):
     meal = service.owned(db, meal_id, user.id)
     item = media.owned(db, media_id, user.id)
     if item.meal_id != meal.id:
         raise DomainError("Фото не относится к этому приему пищи", 404)
     media.drop(db, [item])
     db.commit()
-    media.purge(db, files)
+    purge_later(background, db, files)
     db.refresh(meal)
     return service.meal_out(meal, user)
 

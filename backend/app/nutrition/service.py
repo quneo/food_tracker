@@ -150,6 +150,9 @@ def update(db: Session, user: User, meal: Meal, data: MealPatch) -> Meal:
         set_items(meal, data.items)
         # The person changed the numbers: the result is theirs, not a guess anymore.
         meal.estimated_by = "user"
+        meal.confidence = None
+        meal.kcal_low = meal.kcal_high = None
+        meal.assumptions = []
     db.flush()
     return meal
 

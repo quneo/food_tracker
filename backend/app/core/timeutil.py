@@ -40,6 +40,11 @@ def local_day(value: datetime, tz: ZoneInfo) -> date:
     return to_local(value, tz).date()
 
 
+def utc_iso(value: datetime | None) -> str | None:
+    """Moments not tied to the person's day (sign-ups, sessions): UTC with an offset."""
+    return value.replace(tzinfo=UTC).isoformat(timespec="seconds") if value else None
+
+
 def parse_local(text: str | None) -> datetime | None:
     """Accepts "2026-10-11T14:30", "2026-10-11 14:30" or a bare date (noon)."""
     if not text:

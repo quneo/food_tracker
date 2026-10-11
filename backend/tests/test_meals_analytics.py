@@ -156,3 +156,12 @@ def test_output_schema_is_strict():
     walk(schema)
     kinds = schema["properties"]["actions"]["items"]["anyOf"]
     assert len(kinds) == 14
+
+
+def test_measurement_edit_keeps_its_id(person):
+    entry = person.web.post("/api/measurements", json={"kind": "waist", "value": 82}).json()
+    edited = person.web.put(
+        f"/api/measurements/{entry['id']}", json={"kind": "waist", "value": 81.5}
+    ).json()
+    assert edited["id"] == entry["id"] and edited["value"] == 81.5
+    assert edited["measured_at"] == entry["measured_at"]

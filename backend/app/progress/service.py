@@ -176,6 +176,19 @@ def owned_measurement(db: Session, entry_id: int, user_id: int) -> Measurement:
     return _owned(db, Measurement, entry_id, user_id)
 
 
+def update_measurement(db: Session, user: User, entry: Measurement, data) -> Measurement:
+    limit = 75 if data.kind == "body_fat" else 300
+    if not 0 < data.value <= limit:
+        raise DomainError("Проверьте значение замера")
+    entry.kind = data.kind
+    entry.value = round(data.value, 1)
+    if data.measured_at:
+        entry.measured_at, entry.measured_on = _when(user, data.measured_at)
+    entry.note = data.note
+    db.flush()
+    return entry
+
+
 # Progress photos
 
 

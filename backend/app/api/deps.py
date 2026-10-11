@@ -1,12 +1,13 @@
 import hmac
 from typing import Annotated
 
-from fastapi import Depends, Request
+from fastapi import BackgroundTasks, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.core.exceptions import DomainError
 from app.database import get_db
+from app.media import service as media
 from app.media.storage import Storage, get_storage
 from app.users import service as users
 from app.users.models import User
@@ -20,6 +21,17 @@ def storage() -> Storage:
 
 
 Files = Annotated[Storage, Depends(storage)]
+
+
+def _purge(bind, files: Storage):
+    with Session(bind) as session:
+        media.purge(session, files)
+
+
+def purge_later(background: BackgroundTasks, db: Session, files: Storage):
+    """Removes deleted photos from storage after the response is sent: a slow or
+    unavailable storage never holds the request (failures stay queued for maintenance)."""
+    background.add_task(_purge, db.get_bind(), files)
 
 
 def require_bot(request: Request):
