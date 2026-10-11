@@ -16,6 +16,7 @@ import { MealRow } from '@/components/meals/MealRow'
 import { NewMealSheet } from '@/components/meals/NewMealSheet'
 import { useMealParam } from '@/components/meals/MealSheet'
 import { WeightSheet, weightChange } from '@/components/progress/WeightEditor'
+import { TelegramLinkButton } from '@/components/shared/TelegramLinkButton'
 import { addDays, dayLabel, formatDay, num, signed, timeOf, todayIn } from '@/lib/format'
 import { botLink } from '@/lib/telegram'
 
@@ -50,6 +51,20 @@ export default function HomePage() {
           <ThemeToggle />
         </span>
       </PageHeader>
+
+      {!user.telegram_id && (
+        <Card className="mb-4 border-primary/30">
+          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm">
+              <p className="font-medium">Привяжите Telegram</p>
+              <p className="text-muted-foreground">
+                Фото еды, вес и вопросы удобнее всего присылать боту — записи появятся здесь.
+              </p>
+            </div>
+            <TelegramLinkButton className="shrink-0" />
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:items-start">
         <div className="flex flex-col gap-4">

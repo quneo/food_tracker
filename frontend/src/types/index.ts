@@ -6,8 +6,13 @@ export interface User {
   id: number
   name: string
   first_name: string | null
+  /** Telegram username. */
   username: string | null
-  telegram_id: number
+  /** Empty until a person who signed in with Bastion links Telegram. */
+  telegram_id: number | null
+  /** Bastion login. */
+  login: string | null
+  bastion: boolean
   is_admin: boolean
   timezone: string
   created_at: string
@@ -15,8 +20,15 @@ export interface User {
 
 export interface AuthConfig {
   bot_username: string
-  registration: 'invite' | 'open'
+  registration: 'bastion' | 'invite' | 'open'
   widget: boolean
+  bastion: boolean
+  bastion_url: string | null
+}
+
+export interface TelegramLink {
+  link: string
+  expires_in: number
 }
 
 export interface LoginRequest {
@@ -326,6 +338,10 @@ export interface AdminUser {
   id: number
   name: string
   username: string | null
+  /** Bastion login. */
+  login: string | null
+  telegram: boolean
+  bastion_active: boolean
   is_admin: boolean
   is_blocked: boolean
   created_at: string

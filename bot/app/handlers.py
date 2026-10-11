@@ -174,9 +174,27 @@ async def other(message: Message, bot: Bot):
 @router.callback_query(F.data)
 async def press(callback: CallbackQuery, bot: Bot):
     try:
-        result = await backend.call(
-            "POST", "bot/press", callback.from_user.id, json={"data": callback.data}
-        )
+        if callback.data.startswith("k:"):
+            # Linking this Telegram to an account from the site: not registered yet.
+            user = callback.from_user
+            result = await backend.call(
+                "POST",
+                "bot/link",
+                json={
+                    "user": {
+                        "id": user.id,
+                        "first_name": user.first_name,
+                        "last_name": user.last_name,
+                        "username": user.username,
+                        "language_code": user.language_code,
+                    },
+                    "data": callback.data,
+                },
+            )
+        else:
+            result = await backend.call(
+                "POST", "bot/press", callback.from_user.id, json={"data": callback.data}
+            )
     except ApiError as error:
         await callback.answer(str(error)[:200], show_alert=True)
         return

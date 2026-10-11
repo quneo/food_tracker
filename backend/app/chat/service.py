@@ -65,6 +65,8 @@ def site_row(text: str = "🌐 Открыть дневник", path: str = "/") 
 
 def start(db: Session, info: dict, payload: str | None) -> dict:
     payload = (payload or "").strip()
+    if payload.startswith("link_"):
+        return link_offer(db, payload[5:])
     invite = payload[4:] if payload.startswith("inv_") else None
     try:
         user, created = users.ensure_user(db, info, invite)
@@ -94,6 +96,39 @@ def start(db: Session, info: dict, payload: str | None) -> dict:
         else "С возвращением! 👋\n\n"
     )
     return view(greeting + HELP, site_row())
+
+
+def link_offer(db: Session, code: str) -> dict:
+    """Someone opened a "link Telegram" link from the site: ask before linking."""
+    target = users.link_target(db, code)
+    if not target:
+        return view("Ссылка для привязки устарела. Нажмите «Привязать Telegram» на сайте еще раз.")
+    login = f" ({escape(target.username)})" if target.username else ""
+    return view(
+        "🔗 <b>Привязать этот Telegram к дневнику?</b>\n\n"
+        f"Аккаунт: {escape(target.display_name)}{login}\n\n"
+        "Подтверждайте, только если привязку начали вы сами на сайте.",
+        [
+            [
+                views.button("✅ Да, привязать", f"k:y:{code}"),
+                views.button("✖️ Нет", f"k:n:{code}"),
+            ]
+        ],
+    )
+
+
+def link_answer(db: Session, info: dict, data: str) -> dict:
+    """The answer to link_offer (callback data k:y:<code> / k:n:<code>)."""
+    parts = data.split(":")
+    if len(parts) != 3 or parts[0] != "k":
+        return {"view": None, "toast": "Кнопка устарела"}
+    try:
+        text = users.link_telegram(db, parts[2], info, parts[1] == "y")
+    except DomainError as error:
+        return {"view": view(escape(error.message)), "toast": None}
+    if parts[1] != "y":
+        return {"view": view(text), "toast": None}
+    return {"view": view(f"{text}\n\n{HELP}", site_row()), "toast": "Готово"}
 
 
 def today(db: Session, user: User) -> dict:

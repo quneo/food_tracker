@@ -133,7 +133,7 @@ def send_due(db: Session) -> int:
         user = db.get(User, reminder.user_id)
         tz_name = user.profile.timezone
         fresh = now - reminder.next_run_at < STALE
-        if fresh and not user.is_blocked:
+        if fresh and user.can_enter and user.telegram_id:
             if reminder.smart_skip and _already_done(db, reminder, tz_name):
                 log.info("reminder %s skipped: already done", reminder.id)
             else:

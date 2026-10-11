@@ -37,6 +37,12 @@ class DeleteAccount(BaseModel):
     confirm: str
 
 
+class BastionLogin(BaseModel):
+    username: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=256)
+    totp_code: str | None = Field(default=None, max_length=16)
+
+
 def me(user: User) -> dict:
     return {
         "id": user.id,
@@ -44,6 +50,8 @@ def me(user: User) -> dict:
         "first_name": user.first_name,
         "username": user.telegram_username,
         "telegram_id": user.telegram_id,
+        "login": user.username,
+        "bastion": user.bastion_id is not None,
         "is_admin": user.is_admin,
         "timezone": user.profile.timezone,
         "created_at": utc_iso(user.created_at),
@@ -77,6 +85,31 @@ def config():
         "registration": settings.registration,
         # The Login Widget only works on the domain set in BotFather (/setdomain).
         "widget": bool(settings.app_url and settings.app_url.startswith("https://")),
+        "bastion": settings.registration == "bastion",
+        "bastion_url": settings.bastion_link,
+    }
+
+
+@router.post("/bastion")
+def bastion_login(data: BastionLogin, request: Request, response: Response, db: Db):
+    if get_settings().registration != "bastion":
+        raise DomainError("Вход через Bastion выключен", 404)
+    ip = request.headers.get("x-real-ip") or (request.client.host if request.client else None)
+    code = (data.totp_code or "").replace(" ", "") or None
+    user = users.bastion_login(db, data.username.strip(), data.password, code, ip)
+    return sign_in(db, user, request, response)
+
+
+@router.post("/telegram-link")
+def start_telegram_link(user: CurrentUser, db: Db):
+    """A link that opens the bot; confirming there attaches this Telegram to the account."""
+    if user.telegram_id:
+        raise DomainError("Telegram уже привязан")
+    link = users.start_link(db, user)
+    username = get_settings().telegram_bot_username
+    return {
+        "link": f"https://t.me/{username}?start=link_{link.code}",
+        "expires_in": int(users.LOGIN_TTL.total_seconds()),
     }
 
 

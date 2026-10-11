@@ -21,7 +21,9 @@ def push(
     text: str,
     buttons: list | None = None,
     edit_message_id: int | None = None,
-) -> OutboxMessage:
+) -> OutboxMessage | None:
+    if not user.telegram_id:
+        return None  # nothing to deliver to until Telegram is linked
     payload = view(text, buttons)
     if edit_message_id:
         payload["edit_message_id"] = edit_message_id

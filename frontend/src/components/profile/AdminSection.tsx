@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Copy, Plus, ShieldCheck, Ticket, Trash2, UserCheck, UserX } from 'lucide-react'
 import { toast } from 'sonner'
-import { adminApi } from '@/api/endpoints'
+import { adminApi, authApi } from '@/api/endpoints'
 import { keys } from '@/api/keys'
 import { useUser } from '@/hooks/useAuth'
 import { Badge } from '@/components/ui/badge'
@@ -37,10 +37,29 @@ function copy(text: string) {
 }
 
 export function AdminSection() {
+  const config = useQuery({
+    queryKey: keys.authConfig,
+    queryFn: ({ signal }) => authApi.config({ signal }),
+    staleTime: Infinity,
+  })
+  const bastion = config.data?.registration === 'bastion'
   return (
     <div className="flex flex-col gap-4">
       <AiStatusCard />
-      <InvitesCard />
+      {bastion ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Доступ</CardTitle>
+            <CardDescription>
+              Кто может войти, решает Bastion: доступ получают люди из групп проекта. Новые люди
+              входят на сайте и сами привязывают Telegram в профиле. Если человека убрать из группы,
+              в течение часа его вход и бот закроются.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      ) : (
+        config.data && <InvitesCard />
+      )}
       <UsersCard />
     </div>
   )
@@ -338,6 +357,13 @@ function UsersCard() {
                 <div className="min-w-0 flex-1">
                   <p className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{user.name}</span>
+                    {user.login && (
+                      <span className="text-sm text-muted-foreground">{user.login}</span>
+                    )}
+                    {!user.telegram && <Badge variant="secondary">без Telegram</Badge>}
+                    {!user.bastion_active && (
+                      <Badge variant="secondary">нет доступа в Bastion</Badge>
+                    )}
                     {user.username && (
                       <span className="text-sm text-muted-foreground">@{user.username}</span>
                     )}

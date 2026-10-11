@@ -12,7 +12,13 @@ export class ApiError extends Error {
 }
 
 // Answers of these calls are about signing in; a 401 there is not an expired session.
-const AUTH_PATHS = ['/auth/me', '/auth/telegram', '/auth/webapp', '/auth/login-requests']
+const AUTH_PATHS = [
+  '/auth/me',
+  '/auth/telegram',
+  '/auth/webapp',
+  '/auth/login-requests',
+  '/auth/bastion',
+]
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const body = options.body

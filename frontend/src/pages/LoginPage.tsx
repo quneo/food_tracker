@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ExternalLink, Loader2, Send } from 'lucide-react'
+import { ExternalLink, Loader2, LogIn, Send } from 'lucide-react'
+import { ApiError } from '@/api/client'
 import { authApi } from '@/api/endpoints'
 import { keys } from '@/api/keys'
 import { useAuth } from '@/hooks/useAuth'
 import { takeLaunch } from '@/lib/telegram'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { LeafMark } from '@/components/shared/LeafMark'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
 import type { LoginRequest, TelegramWidgetUser, User } from '@/types'
@@ -74,7 +77,9 @@ export default function LoginPage() {
           <CardHeader className="gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">Вход</h1>
             <CardDescription className="text-[15px]">
-              Дневник питания, веса и замеров. Вход через ваш Telegram — без паролей.
+              {config.data?.bastion
+                ? 'Дневник питания, веса и замеров. Вход через Bastion: логин, пароль и код из приложения.'
+                : 'Дневник питания, веса и замеров. Вход через ваш Telegram — без паролей.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-5">
@@ -86,7 +91,21 @@ export default function LoginPage() {
                 {error}
               </p>
             )}
-            <BotLoginBlock onConfirmed={finish} onError={setError} />
+            {config.data?.bastion && (
+              <>
+                <BastionForm bastionUrl={config.data.bastion_url} onSignedIn={signedIn} />
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <span className="h-px flex-1 bg-border" />
+                  или, если Telegram уже привязан
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+              </>
+            )}
+            <BotLoginBlock
+              onConfirmed={finish}
+              onError={setError}
+              secondary={Boolean(config.data?.bastion)}
+            />
             {config.data?.widget && (
               <>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -107,12 +126,113 @@ export default function LoginPage() {
   )
 }
 
+/** Bastion's own sign-in form: the backend checks login, password and code in Bastion. */
+function BastionForm({
+  bastionUrl,
+  onSignedIn,
+}: {
+  bastionUrl: string | null
+  onSignedIn: (user: User) => void
+}) {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<{ text: string; enroll: boolean } | null>(null)
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      onSignedIn(await authApi.bastion(username.trim(), password, code.replace(/\s/g, '')))
+    } catch (e) {
+      const enroll = e instanceof ApiError && e.code === 'totp_not_enrolled'
+      setError({ text: (e as Error).message, enroll })
+      if (e instanceof ApiError && e.code === 'invalid_totp') setCode('')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
+      {error && (
+        <p
+          role="alert"
+          className="rounded-[14px] bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        >
+          {error.text}
+          {error.enroll && bastionUrl && (
+            <>
+              {' '}
+              <a href={bastionUrl} target="_blank" rel="noopener noreferrer" className="underline">
+                Открыть Bastion
+              </a>
+            </>
+          )}
+        </p>
+      )}
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="bastion-username">Логин</Label>
+        <Input
+          id="bastion-username"
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
+          required
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          className="h-12"
+        />
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="bastion-password">Пароль</Label>
+        <Input
+          id="bastion-password"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="h-12"
+        />
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="bastion-code">Код из приложения</Label>
+        <Input
+          id="bastion-code"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          pattern="[0-9 ]*"
+          maxLength={7}
+          placeholder="123 456"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          className="h-12 tracking-[0.2em] tabular-nums"
+        />
+      </div>
+      <Button
+        type="submit"
+        size="lg"
+        className="h-12 text-[15px]"
+        disabled={busy || !username.trim() || !password}
+      >
+        {busy ? <Loader2 className="animate-spin" /> : <LogIn />}
+        Войти
+      </Button>
+    </form>
+  )
+}
+
 function BotLoginBlock({
   onConfirmed,
   onError,
+  secondary = false,
 }: {
   onConfirmed: (user?: User) => Promise<void>
   onError: (message: string) => void
+  secondary?: boolean
 }) {
   const [state, setState] = useState<BotLogin>({ step: 'idle' })
   const [now, setNow] = useState(Date.now)
@@ -215,6 +335,7 @@ function BotLoginBlock({
       )}
       <Button
         size="lg"
+        variant={secondary ? 'outline' : 'default'}
         className="h-12 text-[15px]"
         onClick={start}
         disabled={state.step === 'starting'}

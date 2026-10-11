@@ -56,7 +56,12 @@ def bot_user(request: Request, db: Db) -> User:
         raise DomainError("Нет пользователя Telegram", 400) from None
     user = users.by_telegram(db, telegram_id)
     if not user:
-        raise DomainError("Сначала нажмите /start", 401, {"code": "not_registered"})
+        message = (
+            users.link_first()
+            if get_settings().registration == "bastion"
+            else "Сначала нажмите /start"
+        )
+        raise DomainError(message, 401, {"code": "not_registered"})
     if user.is_blocked:
         raise DomainError("Доступ к дневнику закрыт администратором", 403)
     return user

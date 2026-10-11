@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
+import { TelegramLinkButton } from '@/components/shared/TelegramLinkButton'
 import { botLink } from '@/lib/telegram'
 import { utcLabel } from '@/lib/format'
 
@@ -39,17 +40,33 @@ export function AccountSection() {
       <Card>
         <CardHeader>
           <CardTitle>Аккаунт</CardTitle>
-          <CardDescription>Вход и данные связаны с вашим Telegram.</CardDescription>
+          <CardDescription>
+            {user.bastion
+              ? 'Вход через Bastion. Еду, вес и вопросы удобнее всего присылать боту в Telegram.'
+              : 'Вход и данные связаны с вашим Telegram.'}
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
           <dl className="grid gap-3 text-sm sm:grid-cols-2">
             <div>
-              <dt className="text-muted-foreground">Имя в Telegram</dt>
+              <dt className="text-muted-foreground">{user.bastion ? 'Имя' : 'Имя в Telegram'}</dt>
               <dd className="font-medium">{user.name}</dd>
             </div>
+            {user.bastion && (
+              <div>
+                <dt className="text-muted-foreground">Логин Bastion</dt>
+                <dd className="font-medium">{user.login}</dd>
+              </div>
+            )}
             <div>
-              <dt className="text-muted-foreground">Имя пользователя</dt>
-              <dd className="font-medium">{user.username ? `@${user.username}` : '—'}</dd>
+              <dt className="text-muted-foreground">Telegram</dt>
+              <dd className="font-medium">
+                {!user.telegram_id
+                  ? 'не привязан'
+                  : user.username
+                    ? `@${user.username}`
+                    : 'привязан'}
+              </dd>
             </div>
             <div>
               <dt className="text-muted-foreground">В дневнике с</dt>
@@ -60,7 +77,8 @@ export function AccountSection() {
               <dd className="font-medium">{user.timezone}</dd>
             </div>
           </dl>
-          {config.data && (
+          {!user.telegram_id && <TelegramLinkButton className="self-start" />}
+          {config.data && user.telegram_id && (
             <Button asChild variant="outline" className="self-start">
               <a href={botLink(config.data.bot_username)} target="_blank" rel="noopener noreferrer">
                 <Send />

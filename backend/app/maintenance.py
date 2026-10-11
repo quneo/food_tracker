@@ -13,6 +13,7 @@ from app.media import service as media
 from app.media.models import Media
 from app.media.storage import get_storage
 from app.reminders import service as reminders
+from app.users import service as users
 from app.users.models import LoginRequest, WebSession
 
 log = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ def every_tick():
 def hourly():
     now = utcnow()
     with SessionLocal() as db:
+        users.sync_bastion(db)
         db.execute(delete(LoginRequest).where(LoginRequest.expires_at < now - timedelta(days=1)))
         db.execute(delete(WebSession).where(WebSession.expires_at < now))
         db.execute(

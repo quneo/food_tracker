@@ -27,6 +27,7 @@ import type {
   SuggestedTargets,
   TelegramWidgetUser,
   User,
+  TelegramLink,
   Weight,
   WeightIn,
 } from '@/types'
@@ -40,6 +41,9 @@ export const authApi = {
     api<User>('/auth/telegram', json('POST', { ...user, invite: invite || undefined })),
   webapp: (initData: string, invite?: string | null) =>
     api<User>('/auth/webapp', json('POST', { init_data: initData, invite: invite || undefined })),
+  bastion: (username: string, password: string, totpCode: string) =>
+    api<User>('/auth/bastion', json('POST', { username, password, totp_code: totpCode || null })),
+  telegramLink: () => api<TelegramLink>('/auth/telegram-link', { method: 'POST' }),
   startBotLogin: () => api<LoginRequest>('/auth/login-requests', { method: 'POST' }),
   pollBotLogin: (code: string, pollToken: string, signal?: AbortSignal) =>
     api<LoginPoll>('/auth/login-requests/poll', {

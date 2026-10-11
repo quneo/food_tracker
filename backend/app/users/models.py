@@ -9,8 +9,14 @@ from app.database import Base, utcnow
 class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(primary_key=True)
-    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True)
+    # Empty until a person who signed in with Bastion links their Telegram.
+    telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
     telegram_username: Mapped[str | None] = mapped_column(String(64))
+    # Bastion account (REGISTRATION=bastion): its id is the identity, the login is shown.
+    bastion_id: Mapped[str | None] = mapped_column(String(64), unique=True)
+    username: Mapped[str | None] = mapped_column(String(64))
+    # False when Bastion no longer lets this person into the project (synced hourly).
+    bastion_active: Mapped[bool] = mapped_column(default=True)
     first_name: Mapped[str] = mapped_column(String(128), default="")
     last_name: Mapped[str | None] = mapped_column(String(128))
     language: Mapped[str | None] = mapped_column(String(16))
@@ -27,7 +33,15 @@ class User(Base):
     @property
     def display_name(self) -> str:
         name = " ".join(filter(None, [self.first_name, self.last_name])).strip()
-        return name or (f"@{self.telegram_username}" if self.telegram_username else "Без имени")
+        if name:
+            return name
+        if self.username:
+            return self.username
+        return f"@{self.telegram_username}" if self.telegram_username else "Без имени"
+
+    @property
+    def can_enter(self) -> bool:
+        return not self.is_blocked and self.bastion_active
 
 
 class Profile(Base):
@@ -95,12 +109,20 @@ class WebSession(Base):
 
 
 class LoginRequest(Base):
-    """Sign-in through the bot: the browser opens t.me/<bot>?start=login_<code>, the person
-    confirms in the chat, and the browser that holds the poll secret gets the session."""
+    """A request the person confirms in the chat with the bot.
+
+    purpose "login": the browser opens t.me/<bot>?start=login_<code>, the person confirms,
+    and the browser that holds the poll secret gets the session.
+    purpose "link": a person signed in (Bastion) opens t.me/<bot>?start=link_<code> to
+    attach their Telegram account to user_id."""
 
     __tablename__ = "login_requests"
-    __table_args__ = (CheckConstraint("status IN ('pending', 'confirmed', 'rejected', 'used')"),)
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'confirmed', 'rejected', 'used')"),
+        CheckConstraint("purpose IN ('login', 'link')"),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
+    purpose: Mapped[str] = mapped_column(String(8), default="login", server_default="login")
     code: Mapped[str] = mapped_column(String(48), unique=True)
     poll_hash: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(16), default="pending")

@@ -70,6 +70,17 @@ def receive(
     return result
 
 
+class LinkIn(BaseModel):
+    user: TelegramUser
+    data: str = Field(max_length=64)
+
+
+@router.post("/link")
+def link(data: LinkIn, db: Db):
+    """Buttons k:y/k:n under a "link Telegram" offer: the account may not exist yet."""
+    return service.link_answer(db, data.user.model_dump(), data.data)
+
+
 @router.post("/press")
 def press(data: PressIn, user: BotUser, db: Db):
     return service.press(db, user, data.data)
