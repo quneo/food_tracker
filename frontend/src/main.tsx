@@ -46,6 +46,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             <TooltipProvider delayDuration={300}>
+              <div className="wallpaper" aria-hidden="true" />
               <RouterProvider router={router} />
               <Toaster position="top-center" richColors closeButton />
             </TooltipProvider>

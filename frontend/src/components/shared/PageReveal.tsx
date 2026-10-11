@@ -1,14 +1,19 @@
 import type { ReactNode } from 'react'
-import { BlurFade } from '@/components/magicui/blur-fade'
-import { useReducedMotion } from '@/hooks/useMediaQuery'
+import { motion } from 'motion/react'
 
+/**
+ * A quiet fade between pages. Opacity only, nothing that stays applied afterwards: a
+ * lingering filter or transform on an ancestor would stop the frosted sheets from
+ * blurring the wallpaper behind them. Reduced motion is honored by MotionConfig.
+ */
 export function PageReveal({ children }: { children: ReactNode }) {
-  const reduced = useReducedMotion()
-  return reduced ? (
-    <>{children}</>
-  ) : (
-    <BlurFade duration={0.22} offset={4} blur="2px">
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+    >
       {children}
-    </BlurFade>
+    </motion.div>
   )
 }

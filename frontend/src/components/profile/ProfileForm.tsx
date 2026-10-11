@@ -228,13 +228,13 @@ export function ProfileForm({ profile }: { profile: Profile }) {
 
   return (
     <form
-      className="flex flex-col gap-4"
+      className="grid gap-4 min-[1180px]:grid-cols-2 min-[1180px]:items-start"
       onSubmit={(event) => {
         event.preventDefault()
         save.mutate()
       }}
     >
-      <Card>
+      <Card className="min-[1180px]:row-span-2">
         <CardHeader>
           <CardTitle>О себе</CardTitle>
           <CardDescription>Нужно для расчета нормы калорий.</CardDescription>
@@ -413,12 +413,12 @@ export function ProfileForm({ profile }: { profile: Profile }) {
       </Card>
 
       {error && (
-        <p className="form-error" role="alert">
+        <p className="form-error min-[1180px]:col-span-2" role="alert">
           {error}
         </p>
       )}
       {(dirty || save.isPending) && (
-        <div className="sticky bottom-[calc(var(--nav-height)+env(safe-area-inset-bottom)+8px)] z-10 flex items-center justify-between gap-3 rounded-[16px] border bg-popover/95 p-2 pl-4 shadow-lg backdrop-blur min-[900px]:bottom-4">
+        <div className="sticky bottom-[calc(var(--nav-height)+env(safe-area-inset-bottom)+20px)] z-10 flex min-[1180px]:col-span-2 items-center justify-between gap-3 rounded-[16px] border bg-popover/95 p-2 pl-4 shadow-lg backdrop-blur min-[900px]:bottom-4">
           <span className="text-sm text-muted-foreground">Есть несохраненные изменения</span>
           <Button type="submit" disabled={save.isPending}>
             {save.isPending ? 'Сохраняем…' : 'Сохранить'}

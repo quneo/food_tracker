@@ -2,8 +2,29 @@
 @import 'tw-animate-css';
 @custom-variant dark (&:is(.dark *));
 
+/* Literata: a warm book serif for headings and the numbers that matter. Self-hosted. */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('./assets/fonts/literata-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('./assets/fonts/literata-latin.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 @theme inline {
   --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-serif: 'Literata', Georgia, 'Times New Roman', serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -33,65 +54,88 @@
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 14px;
-  --radius-xl: 20px;
+  --radius-xl: 24px;
 }
 
-/* Light: warm paper, deep green, a warm accent for calories. */
+/*
+ * Light: a chat wallpaper of pistachio, butter, sea glass and apricot with food doodles;
+ * content sits on frosted sheets. Basil green acts, tomato counts calories.
+ */
 :root {
-  --background: #f8f7f2;
-  --foreground: #18201b;
+  --background: #eef2e6;
+  --wall-1: #d3e9be;
+  --wall-2: #f4eab3;
+  --wall-3: #b7e0d4;
+  --wall-4: #f7d3bb;
+  --pattern: rgba(32, 64, 46, 0.15);
+  --foreground: #17221c;
   --card: #ffffff;
   --popover: #ffffff;
-  --muted: #f0efe8;
-  --muted-foreground: #646d67;
-  --border: #e6e4da;
-  --input: #dcd9cd;
-  --primary: #1f7a4d;
+  --glass: 80%;
+  --glass-edge: rgba(255, 255, 255, 0.7);
+  --glass-shadow: 0 1px 1px rgba(23, 34, 28, 0.04), 0 10px 30px -12px rgba(23, 34, 28, 0.16);
+  --muted: rgba(23, 34, 28, 0.055);
+  --muted-foreground: #58675e;
+  --border: rgba(23, 34, 28, 0.1);
+  --input: rgba(23, 34, 28, 0.16);
+  --primary: #2b8455;
   --primary-foreground: #ffffff;
-  --accent: #e8f2ea;
-  --accent-foreground: #1a6a42;
-  --ring: #1f7a4d;
-  --destructive: #c8423a;
+  --accent: rgba(43, 132, 85, 0.12);
+  --accent-foreground: #1d6a42;
+  --ring: #2b8455;
+  --destructive: #c73f35;
   --warning: #9a6512;
-  --warning-soft: #fbf0dc;
-  --kcal: #f08a24;
-  --kcal-soft: #fdeedd;
-  --protein: #3a7fd5;
-  --fat: #d6577f;
-  --carbs: #8b67d6;
-  --track: #efede5;
-  --grid: #ecebe3;
-  --card-shadow: 0 1px 2px rgba(40, 45, 30, 0.04), 0 6px 24px rgba(40, 45, 30, 0.035);
+  --warning-soft: rgba(222, 154, 42, 0.16);
+  --kcal: #e4593a;
+  --kcal-soft: rgba(228, 89, 58, 0.12);
+  --protein: #4b69d4;
+  --fat: #d99322;
+  --carbs: #c2477b;
+  --track: rgba(23, 34, 28, 0.08);
+  --grid: rgba(23, 34, 28, 0.08);
+  --bubble: #ffffff;
+  --pill: rgba(23, 34, 28, 0.38);
+  --pill-foreground: #ffffff;
   --radius: 12px;
-  --nav-height: 68px;
+  --nav-height: 64px;
 }
 
-/* Dark: near-black green-tinted surfaces, mint primary. */
+/* Dark: a night wallpaper (deep teal, olive, plum) with faint doodles. */
 .dark {
-  --background: #0d1210;
-  --foreground: #e6eee8;
-  --card: #151c19;
-  --popover: #18201c;
-  --muted: #1d2622;
-  --muted-foreground: #95a39a;
-  --border: #243029;
-  --input: #2e3c35;
-  --primary: #4fd18b;
-  --primary-foreground: #06140c;
-  --accent: rgba(79, 209, 139, 0.12);
-  --accent-foreground: #74dda3;
-  --ring: #4fd18b;
+  --background: #0d1613;
+  --wall-1: #123029;
+  --wall-2: #26271a;
+  --wall-3: #0f2131;
+  --wall-4: #2c1c25;
+  --pattern: rgba(214, 236, 222, 0.065);
+  --foreground: #e9f0eb;
+  --card: #15201c;
+  --popover: #18241f;
+  --glass: 78%;
+  --glass-edge: rgba(255, 255, 255, 0.06);
+  --glass-shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.6);
+  --muted: rgba(233, 240, 235, 0.06);
+  --muted-foreground: #97a69e;
+  --border: rgba(233, 240, 235, 0.09);
+  --input: rgba(233, 240, 235, 0.16);
+  --primary: #6cd49a;
+  --primary-foreground: #0a1a11;
+  --accent: rgba(108, 212, 154, 0.13);
+  --accent-foreground: #86ddab;
+  --ring: #6cd49a;
   --destructive: #f0716a;
-  --warning: #e5ad57;
-  --warning-soft: rgba(229, 173, 87, 0.13);
-  --kcal: #f29a45;
-  --kcal-soft: rgba(242, 154, 69, 0.14);
-  --protein: #5b93e0;
-  --fat: #e0648a;
-  --carbs: #9a78e6;
-  --track: #222c27;
-  --grid: #222c27;
-  --card-shadow: none;
+  --warning: #eab45f;
+  --warning-soft: rgba(234, 180, 95, 0.14);
+  --kcal: #ff7b57;
+  --kcal-soft: rgba(255, 123, 87, 0.14);
+  --protein: #8099f2;
+  --fat: #f0b954;
+  --carbs: #e27aaa;
+  --track: rgba(233, 240, 235, 0.1);
+  --grid: rgba(233, 240, 235, 0.08);
+  --bubble: #1a2622;
+  --pill: rgba(0, 0, 0, 0.42);
+  --pill-foreground: #e9f0eb;
   color-scheme: dark;
 }
 
@@ -139,7 +183,38 @@
   }
 }
 
-/* shadcn parts in the app's geometry: 44px touch targets, 12px controls, 20px cards. */
+/* The wallpaper behind everything: four soft corners and the doodle pattern. */
+.wallpaper {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 60% at 0% 0%, var(--wall-1), transparent 70%),
+    radial-gradient(70% 60% at 100% 0%, var(--wall-2), transparent 70%),
+    radial-gradient(70% 60% at 0% 100%, var(--wall-3), transparent 70%),
+    radial-gradient(70% 60% at 100% 100%, var(--wall-4), transparent 70%), var(--background);
+}
+.wallpaper::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--pattern);
+  -webkit-mask: url('./assets/pattern.webp') repeat 0 0 / 380px 380px;
+  mask: url('./assets/pattern.webp') repeat 0 0 / 380px 380px;
+}
+
+/* Frosted sheets over the wallpaper. */
+.glass,
+[data-slot='card'] {
+  background: color-mix(in srgb, var(--card) var(--glass), transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  backdrop-filter: blur(22px) saturate(1.5);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+}
+
+/* shadcn parts in the app's geometry: 44px touch targets, 12px controls, 24px sheets. */
 [data-slot='button'] {
   min-height: 44px;
   border-radius: var(--radius);
@@ -157,22 +232,24 @@
 [data-slot='button'][data-size='icon-xs'] {
   min-height: 0;
 }
+[data-slot='button'][data-variant='outline'] {
+  background: color-mix(in srgb, var(--card) 70%, transparent);
+}
 [data-slot='card'] {
-  border-radius: 20px;
-  background: var(--card);
-  box-shadow: var(--card-shadow);
+  border-radius: 24px;
   gap: 16px;
   padding-block: 20px;
 }
 [data-slot='card-header'],
 [data-slot='card-content'],
 [data-slot='card-footer'] {
-  padding-inline: 20px;
+  padding-inline: 22px;
 }
 [data-slot='card-title'] {
-  font-size: 16px;
+  font-family: var(--font-serif);
+  font-size: 19px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.005em;
   line-height: 1.3;
 }
 [data-slot='input'],
@@ -181,7 +258,7 @@
   border-radius: var(--radius);
   font-size: 16px;
   box-shadow: none;
-  background: var(--card);
+  background: color-mix(in srgb, var(--card) 88%, transparent);
 }
 [data-slot='select-trigger'] {
   width: 100%;
@@ -190,12 +267,12 @@
   border-radius: var(--radius);
   font-size: 16px;
   box-shadow: none;
-  background: var(--card);
+  background: color-mix(in srgb, var(--card) 88%, transparent);
 }
 .dark [data-slot='input'],
 .dark [data-slot='select-trigger'],
 .dark [data-slot='textarea'] {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.03);
 }
 [data-slot='select-item'] {
   min-height: 40px;
@@ -217,7 +294,13 @@
 }
 [data-slot='dialog-content'] {
   background: var(--popover);
-  border-radius: 20px;
+  border-radius: 24px;
+}
+[data-slot='dialog-title'],
+[data-slot='drawer-title'],
+[data-slot='alert-dialog-title'] {
+  font-family: var(--font-serif);
+  font-weight: 600;
 }
 [data-slot='dialog-close'] {
   top: 10px;
@@ -231,12 +314,12 @@
 [data-slot='drawer-content'] {
   background: var(--popover);
   max-height: 94dvh;
-  border-radius: 20px 20px 0 0;
+  border-radius: 24px 24px 0 0;
 }
 [data-slot='popover-content'],
 [data-slot='dropdown-menu-content'],
 [data-slot='select-content'] {
-  border-radius: 14px;
+  border-radius: 16px;
 }
 [data-slot='calendar'] {
   --cell-size: 40px;
@@ -244,138 +327,181 @@
 [data-slot='tabs-list'] {
   height: auto;
   padding: 4px;
-  border-radius: 14px;
-  background: var(--muted);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--card) 62%, transparent);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-edge);
 }
 [data-slot='tabs-trigger'] {
   min-height: 40px;
   padding-inline: 14px;
-  border-radius: 10px;
+  border-radius: 12px;
 }
 [data-slot='tabs-trigger'][data-state='active'] {
   background: var(--card);
   color: var(--foreground);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 .dark [data-slot='tabs-trigger'][data-state='active'] {
   border-color: transparent;
-  background: #26312c;
+  background: rgba(255, 255, 255, 0.09);
 }
 
-/* App frame: a left rail from 900px, a bottom bar below. */
+/* App frame: a floating rail on the left from 900px, a floating tab bar below that. */
 .app-shell {
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 0 28px 48px;
   display: grid;
-  grid-template-columns: 196px minmax(0, 1fr);
-  column-gap: 40px;
+  grid-template-columns: 272px minmax(0, 1fr);
+  min-height: 100dvh;
 }
 .app-rail {
   position: sticky;
   top: 0;
   height: 100dvh;
+  padding: 16px 0 16px 16px;
+}
+.rail-panel {
+  height: 100%;
   display: flex;
   flex-direction: column;
-  padding: 26px 0 24px;
+  padding: 18px 12px 14px;
+  border-radius: 28px;
 }
 .app-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   height: 44px;
-  padding-inline: 8px;
-  margin-bottom: 26px;
-  font-size: 17px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
+  padding-inline: 10px;
+  margin-bottom: 18px;
+  font-family: var(--font-serif);
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 .app-brand svg {
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   flex: none;
 }
 .app-nav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 .app-nav a {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 13px;
   min-height: 46px;
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: 14px;
   font-size: 15px;
-  color: var(--muted-foreground);
+  color: var(--foreground);
   transition:
     background 0.15s,
     color 0.15s;
 }
+.app-nav a svg {
+  width: 21px;
+  height: 21px;
+  flex: none;
+  color: var(--muted-foreground);
+}
 .app-nav a:hover {
   background: var(--muted);
-  color: var(--foreground);
 }
 .app-nav a.active {
-  background: var(--accent);
-  color: var(--accent-foreground);
+  background: var(--primary);
+  color: var(--primary-foreground);
   font-weight: 550;
 }
-.app-nav svg {
-  width: 20px;
-  height: 20px;
-  flex: none;
+.app-nav a.active svg {
+  color: var(--primary-foreground);
 }
 .rail-footer {
   margin-top: auto;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding-inline: 4px;
+  gap: 10px;
+  padding: 10px 6px 0;
+  border-top: 1px solid var(--border);
 }
-.main-content {
+.rail-user {
   min-width: 0;
-  padding-top: 30px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+  border-radius: 14px;
+  transition: background 0.15s;
 }
-.theme-toggle {
-  width: 44px;
-  height: 44px;
+.rail-user:hover {
+  background: var(--muted);
+}
+.avatar-dot {
   flex: none;
   display: grid;
   place-items: center;
-  border: 1px solid var(--border);
+  width: 38px;
+  height: 38px;
   border-radius: 999px;
-  background: var(--card);
+  background: linear-gradient(135deg, var(--wall-3), var(--primary));
+  color: #fff;
+  font-weight: 600;
+  font-size: 15px;
+}
+.main-content {
+  min-width: 0;
+  width: 100%;
+  max-width: 1160px;
+  padding: 30px 36px 56px;
+}
+.theme-toggle {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
   color: var(--muted-foreground);
-  transition: color 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
 .theme-toggle:hover {
   color: var(--foreground);
+  background: var(--muted);
 }
 .theme-toggle svg {
   width: 19px;
   height: 19px;
 }
 
+/* Page heading: the serif carries the voice of the app. */
 .page-heading {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
-  min-height: 48px;
-  margin-bottom: 20px;
+  min-height: 52px;
+  margin-bottom: 22px;
 }
 .page-heading h1 {
-  font-size: 28px;
-  line-height: 1.2;
-  font-weight: 650;
-  letter-spacing: -0.035em;
+  font-family: var(--font-serif);
+  font-size: 38px;
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 .page-heading .page-meta {
-  margin-top: 2px;
+  margin-top: 6px;
   color: var(--muted-foreground);
-  font-size: 14px;
+  font-size: 15px;
+}
+.page-heading .page-meta::first-letter {
+  text-transform: uppercase;
 }
 .page-actions {
   display: flex;
@@ -384,11 +510,32 @@
   flex: none;
 }
 .section-title {
-  font-size: 13px;
+  font-family: var(--font-serif);
+  font-size: 19px;
   font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--muted-foreground);
+  letter-spacing: -0.005em;
+}
+
+/* Two columns from 1180px: the page and a sticky side panel. */
+.page-grid {
+  display: grid;
+  gap: 16px;
+}
+.page-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+@media (min-width: 1180px) {
+  .page-grid {
+    grid-template-columns: minmax(0, 1fr) 340px;
+    align-items: start;
+    gap: 20px;
+  }
+  .page-side {
+    position: sticky;
+    top: 30px;
+  }
 }
 
 /* Chips: a wrapping row of choices, never a sideways scroller. */
@@ -404,16 +551,19 @@
   justify-content: center;
   gap: 6px;
   min-height: 40px;
-  padding: 0 14px;
-  border: 1px solid var(--border);
+  padding: 0 15px;
+  border: 1px solid var(--glass-edge);
   border-radius: 999px;
-  background: var(--card);
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   color: var(--foreground);
   font-size: 14px;
   font-weight: 450;
   transition:
     background 0.15s,
-    border-color 0.15s;
+    border-color 0.15s,
+    color 0.15s;
 }
 .chips [data-slot='toggle-group-item'] {
   border-radius: 999px !important;
@@ -421,7 +571,7 @@
 }
 .chip:hover,
 .chips [data-slot='toggle-group-item']:hover {
-  background: var(--muted);
+  background: var(--card);
   color: var(--foreground);
 }
 .chip[data-state='on'],
@@ -429,8 +579,8 @@
 .chip[aria-checked='true'],
 .chips [data-slot='toggle-group-item'][data-state='on'] {
   border-color: var(--primary);
-  background: var(--accent);
-  color: var(--accent-foreground);
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 .chip svg {
   width: 16px;
@@ -442,19 +592,27 @@
   font-variant-numeric: tabular-nums;
 }
 .hero-number {
-  font-size: 40px;
+  font-family: var(--font-serif);
+  font-size: 46px;
   line-height: 1;
-  font-weight: 650;
-  letter-spacing: -0.04em;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.serif-number {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: -0.01em;
 }
 
-/* Calorie ring and macro bars */
+/* Calorie ring and macro bars. The ring draws itself once when the day loads. */
 .ring-track {
   stroke: var(--track);
 }
 .ring-value {
   stroke: var(--kcal);
-  transition: stroke-dashoffset 0.6s ease;
+  transition: stroke-dashoffset 0.9s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .ring-over {
   stroke: var(--destructive);
@@ -470,7 +628,7 @@
   position: absolute;
   inset: 0 auto 0 0;
   border-radius: 999px;
-  transition: width 0.5s ease;
+  transition: width 0.6s ease;
 }
 .macro-dot {
   display: inline-block;
@@ -489,7 +647,7 @@
   background: var(--carbs);
 }
 
-/* Lists inside cards */
+/* Lists inside sheets, like a settings screen: hairlines between rows, not cards. */
 .row-list > * + * {
   border-top: 1px solid var(--border);
 }
@@ -499,7 +657,7 @@
   gap: 12px;
   width: 100%;
   min-height: 64px;
-  padding: 10px 20px;
+  padding: 10px 22px;
   text-align: left;
   transition: background 0.15s;
 }
@@ -513,6 +671,146 @@
   border-radius: 12px;
   object-fit: cover;
   background: var(--muted);
+}
+
+/* A meal as a chat-list row: round photo, title, macros; time and calories on the right. */
+.chat-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 72px;
+  padding: 10px 18px;
+  text-align: left;
+  transition: background 0.15s;
+}
+.chat-row:hover {
+  background: var(--muted);
+}
+.chat-avatar {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+.chat-avatar.is-empty {
+  background: linear-gradient(140deg, var(--wall-2), var(--wall-4));
+  color: color-mix(in srgb, var(--foreground) 70%, transparent);
+}
+.dark .chat-avatar.is-empty {
+  background: linear-gradient(140deg, #2c3a2f, #3a2a33);
+}
+
+/* The diary as a conversation: date pills, meal bubbles, a short service line per day. */
+.chat-column {
+  width: 100%;
+  max-width: 640px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.date-pill {
+  position: sticky;
+  top: 12px;
+  z-index: 5;
+  align-self: center;
+  margin: 10px 0 2px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--pill);
+  color: var(--pill-foreground);
+  font-size: 13.5px;
+  font-weight: 500;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.date-pill::first-letter {
+  text-transform: uppercase;
+}
+.service-line {
+  align-self: center;
+  max-width: 100%;
+  padding: 5px 13px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--card) 55%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: var(--muted-foreground);
+  font-size: 13px;
+  text-align: center;
+}
+.bubble {
+  position: relative;
+  width: min(100%, 540px);
+  border-radius: 20px 20px 20px 6px;
+  background: var(--bubble);
+  box-shadow:
+    0 1px 1px rgba(23, 34, 28, 0.06),
+    0 6px 20px -12px rgba(23, 34, 28, 0.25);
+  overflow: hidden;
+}
+.dark .bubble {
+  box-shadow: 0 6px 20px -12px rgba(0, 0, 0, 0.7);
+}
+.bubble.is-draft {
+  outline: 1.5px dashed color-mix(in srgb, var(--fat) 75%, transparent);
+  outline-offset: -1.5px;
+}
+.bubble-media {
+  display: grid;
+  gap: 3px;
+  padding: 4px 4px 0;
+}
+.bubble-media > * {
+  border-radius: 16px;
+  overflow: hidden;
+}
+.bubble-time {
+  float: right;
+  margin: 6px 0 -4px 12px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+/* Buttons under a bubble, like a bot's inline keyboard. */
+.inline-keys {
+  display: flex;
+  gap: 4px;
+  width: min(100%, 540px);
+  margin-top: -4px;
+}
+.inline-keys > * {
+  flex: 1;
+  min-height: 40px;
+  border-radius: 12px;
+  background: color-mix(in srgb, #1d3a2b 46%, transparent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  transition: background 0.15s;
+}
+.inline-keys > *:hover {
+  background: color-mix(in srgb, #1d3a2b 60%, transparent);
+}
+.dark .inline-keys > * {
+  background: rgba(255, 255, 255, 0.12);
+}
+.dark .inline-keys > *:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.inline-keys svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* Photo with a muted placeholder while loading or when storage is unavailable. */
@@ -539,7 +837,7 @@
 .compare {
   position: relative;
   overflow: hidden;
-  border-radius: 20px;
+  border-radius: 24px;
   background: var(--muted);
   touch-action: pan-y;
   user-select: none;
@@ -574,7 +872,7 @@
   place-items: center;
   border-radius: 999px;
   background: #fff;
-  color: #18201b;
+  color: #17221c;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
   cursor: ew-resize;
   touch-action: none;
@@ -634,19 +932,22 @@
 @media (max-width: 899px) {
   .app-shell {
     display: block;
+  }
+  .main-content {
     max-width: 680px;
-    padding: 0 16px calc(var(--nav-height) + 28px + env(safe-area-inset-bottom));
+    margin: 0 auto;
+    padding: 18px 16px calc(var(--nav-height) + 34px + env(safe-area-inset-bottom));
   }
   .app-rail {
     position: fixed;
     z-index: 40;
-    inset: auto 0 0 0;
+    inset: auto 10px calc(10px + env(safe-area-inset-bottom)) 10px;
     height: auto;
     padding: 0;
-    background: color-mix(in srgb, var(--card) 92%, transparent);
-    border-top: 1px solid var(--border);
-    -webkit-backdrop-filter: blur(16px);
-    backdrop-filter: blur(16px);
+  }
+  .rail-panel {
+    padding: 0;
+    border-radius: 26px;
   }
   .app-brand,
   .rail-footer {
@@ -658,19 +959,26 @@
     width: 100%;
     max-width: 680px;
     margin: 0 auto;
-    height: calc(var(--nav-height) + env(safe-area-inset-bottom));
-    padding: 6px 4px env(safe-area-inset-bottom);
+    height: var(--nav-height);
+    padding: 6px;
   }
   .app-nav a {
     flex: 1 1 0;
     min-width: 0;
     flex-direction: column;
     justify-content: center;
-    gap: 3px;
+    gap: 2px;
     padding: 4px 2px;
+    border-radius: 20px;
     font-size: 11px;
     line-height: 1.2;
-    background: transparent !important;
+  }
+  .app-nav a.active {
+    background: var(--accent);
+    color: var(--accent-foreground);
+  }
+  .app-nav a.active svg {
+    color: var(--accent-foreground);
   }
   .app-nav a span {
     max-width: 100%;
@@ -678,24 +986,15 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .app-nav a.active svg {
-    background: var(--accent);
-  }
   .app-nav svg {
-    width: 40px;
-    height: 28px;
-    padding: 4px 10px;
-    border-radius: 999px;
-    box-sizing: border-box;
-  }
-  .main-content {
-    padding-top: 18px;
+    width: 22px;
+    height: 22px;
   }
   .page-heading {
     margin-bottom: 16px;
   }
   .page-heading h1 {
-    font-size: 26px;
+    font-size: 32px;
   }
 }
 
@@ -708,11 +1007,12 @@
   [data-slot='card'] {
     padding-block: 16px;
   }
-  .list-button {
+  .list-button,
+  .chat-row {
     padding-inline: 16px;
   }
   .hero-number {
-    font-size: 34px;
+    font-size: 40px;
   }
 }
 
@@ -734,6 +1034,7 @@
 }
 
 @media print {
+  .wallpaper,
   .app-rail,
   .page-actions,
   .no-print,
@@ -742,10 +1043,26 @@
   }
   .app-shell {
     display: block;
+  }
+  .main-content {
     padding: 0;
   }
   [data-slot='card'] {
     break-inside: avoid;
     box-shadow: none;
+    backdrop-filter: none;
+    background: #fff;
   }
+}
+
+/* Diary filters come first on phones, in the side panel on wide screens. */
+@media (max-width: 1179px) {
+  .diary-side {
+    order: -1;
+  }
+}
+[data-slot='empty-title'] {
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 600;
 }

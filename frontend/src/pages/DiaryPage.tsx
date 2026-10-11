@@ -87,99 +87,107 @@ export default function DiaryPage() {
         </Button>
       </PageHeader>
 
-      <div className="mx-auto flex max-w-3xl flex-col gap-5">
-        <div className="flex flex-col gap-3" role="group" aria-label="Фильтры">
-          <div className="flex flex-wrap items-center gap-2">
-            <DateRangePicker
-              from={from ?? undefined}
-              to={to ?? undefined}
-              today={today}
-              onChange={(start, end) => update({ from: start, to: end })}
-              label={from && to ? rangeLabel(from, to) : 'Все даты'}
-              className="rounded-full"
-            />
-            {from && (
-              <Button
-                variant="ghost"
-                className="rounded-full text-muted-foreground"
-                onClick={() => update({ from: null, to: null })}
-              >
-                <X />
-                Сбросить период
-              </Button>
-            )}
-          </div>
-          <div className="chips">
-            <button
-              type="button"
-              className="chip"
-              aria-pressed={!type}
-              onClick={() => update({ type: null })}
-            >
-              Все
-            </button>
-            {MEAL_TYPES.map((item) => (
+      <div className="page-grid">
+        <div className="chat-column">
+          {feed.isPending ? (
+            <BlockSkeleton rows={4} />
+          ) : feed.isError ? (
+            <ErrorState error={feed.error} retry={() => feed.refetch()} />
+          ) : (
+            <>
+              {!anyMeals && !feed.hasNextPage && (
+                <EmptyState
+                  icon={NotebookText}
+                  title={filtered ? 'Ничего не нашлось' : 'Записей пока нет'}
+                  description={
+                    filtered
+                      ? 'Попробуйте другой период или уберите фильтры.'
+                      : 'Пришлите боту фото или описание еды, либо добавьте запись вручную.'
+                  }
+                />
+              )}
+              {pages.map((page) => (
+                <PageDays key={page.end} page={page} today={today} onOpen={open} />
+              ))}
+              {feed.hasNextPage && (
+                <Button
+                  variant="outline"
+                  className="self-center rounded-full"
+                  onClick={() => feed.fetchNextPage()}
+                  disabled={feed.isFetchingNextPage}
+                >
+                  <ChevronDown />
+                  {feed.isFetchingNextPage
+                    ? 'Загружаем…'
+                    : `Показать раньше: ${rangeLabel(
+                        addDays(pages[pages.length - 1].start, -7) < floor
+                          ? floor
+                          : addDays(pages[pages.length - 1].start, -7),
+                        addDays(pages[pages.length - 1].start, -1),
+                      )}`}
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+        <aside className="page-side diary-side" aria-label="Фильтры">
+          <div
+            className="glass flex flex-col gap-3 rounded-[24px] p-4"
+            role="group"
+            aria-label="Фильтры"
+          >
+            <p className="section-title hidden min-[1180px]:block">Показать</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <DateRangePicker
+                from={from ?? undefined}
+                to={to ?? undefined}
+                today={today}
+                onChange={(start, end) => update({ from: start, to: end })}
+                label={from && to ? rangeLabel(from, to) : 'Все даты'}
+                className="rounded-full"
+              />
+              {from && (
+                <Button
+                  variant="ghost"
+                  className="rounded-full text-muted-foreground"
+                  onClick={() => update({ from: null, to: null })}
+                >
+                  <X />
+                  Сбросить период
+                </Button>
+              )}
+            </div>
+            <div className="chips">
               <button
-                key={item.value}
                 type="button"
                 className="chip"
-                aria-pressed={type === item.value}
-                onClick={() => update({ type: type === item.value ? null : item.value })}
+                aria-pressed={!type}
+                onClick={() => update({ type: null })}
               >
-                {item.label}
+                Все
               </button>
-            ))}
-            <button
-              type="button"
-              className="chip"
-              aria-pressed={status === 'draft'}
-              onClick={() => update({ status: status ? null : 'draft' })}
-            >
-              Черновики
-            </button>
-          </div>
-        </div>
-
-        {feed.isPending ? (
-          <BlockSkeleton rows={4} />
-        ) : feed.isError ? (
-          <ErrorState error={feed.error} retry={() => feed.refetch()} />
-        ) : (
-          <>
-            {!anyMeals && !feed.hasNextPage && (
-              <EmptyState
-                icon={NotebookText}
-                title={filtered ? 'Ничего не нашлось' : 'Записей пока нет'}
-                description={
-                  filtered
-                    ? 'Попробуйте другой период или уберите фильтры.'
-                    : 'Пришлите боту фото или описание еды, либо добавьте запись вручную.'
-                }
-              />
-            )}
-            {pages.map((page) => (
-              <PageDays key={page.end} page={page} today={today} onOpen={open} />
-            ))}
-            {feed.hasNextPage && (
-              <Button
-                variant="outline"
-                className="self-center rounded-full"
-                onClick={() => feed.fetchNextPage()}
-                disabled={feed.isFetchingNextPage}
+              {MEAL_TYPES.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  className="chip"
+                  aria-pressed={type === item.value}
+                  onClick={() => update({ type: type === item.value ? null : item.value })}
+                >
+                  {item.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="chip"
+                aria-pressed={status === 'draft'}
+                onClick={() => update({ status: status ? null : 'draft' })}
               >
-                <ChevronDown />
-                {feed.isFetchingNextPage
-                  ? 'Загружаем…'
-                  : `Показать раньше: ${rangeLabel(
-                      addDays(pages[pages.length - 1].start, -7) < floor
-                        ? floor
-                        : addDays(pages[pages.length - 1].start, -7),
-                      addDays(pages[pages.length - 1].start, -1),
-                    )}`}
-              </Button>
-            )}
-          </>
-        )}
+                Черновики
+              </button>
+            </div>
+          </div>
+        </aside>
       </div>
 
       <NewMealSheet open={adding} onOpenChange={setAdding} />
@@ -207,11 +215,7 @@ function PageDays({
   }, [page.meals])
 
   if (!days.length)
-    return (
-      <p className="rounded-[14px] border border-dashed px-4 py-3 text-center text-sm text-muted-foreground">
-        {rangeLabel(page.start, page.end)}: записей нет
-      </p>
-    )
+    return <p className="service-line">{rangeLabel(page.start, page.end)}: записей нет</p>
   return (
     <>
       {days.map(([day, meals]) => (
@@ -240,26 +244,24 @@ function DaySection({
     carbs: confirmed.reduce((sum, meal) => sum + meal.carbs, 0),
   }
   const drafts = meals.length - confirmed.length
-  // Newest first within the day, like the feed.
-  const ordered = [...meals].sort((a, b) => (a.eaten_at < b.eaten_at ? 1 : -1))
+  // Days go newest first; within a day meals read in the order they were eaten.
+  const ordered = [...meals].sort((a, b) => (a.eaten_at < b.eaten_at ? -1 : 1))
   return (
-    <section aria-labelledby={`day-${day}`} className="flex flex-col gap-3">
-      <header className="sticky top-0 z-10 -mx-1 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 bg-background/95 px-1 py-2 backdrop-blur">
-        <h2
-          id={`day-${day}`}
-          className="text-lg font-semibold tracking-tight first-letter:uppercase"
-        >
-          {dayLabel(day, today)}
-        </h2>
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-          <span className="font-medium tabular">{num(totals.kcal)} ккал</span>
-          <MacroLine value={totals} className="text-muted-foreground" />
-          {drafts > 0 && <span className="text-warning">+ черновики: {drafts}</span>}
-        </div>
-      </header>
+    <section aria-labelledby={`day-${day}`} className="flex flex-col gap-2.5">
+      <h2 id={`day-${day}`} className="date-pill">
+        {dayLabel(day, today)}
+      </h2>
       {ordered.map((meal) => (
         <MealCard key={meal.id} meal={meal} onOpen={onOpen} />
       ))}
+      <p className="service-line flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+        <span>
+          Итог дня{' '}
+          <span className="font-medium text-foreground tabular">{num(totals.kcal)} ккал</span>
+        </span>
+        <MacroLine value={totals} />
+        {drafts > 0 && <span className="text-warning">черновики не в счет: {drafts}</span>}
+      </p>
     </section>
   )
 }

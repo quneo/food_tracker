@@ -35,7 +35,7 @@ export default function ProfilePage() {
     <>
       <PageHeader
         title="Профиль"
-        meta={user.username ? `${user.name} · @${user.username}` : user.name}
+        meta={user.username ? `${user.name}, @${user.username}` : user.name}
       >
         <span className="min-[900px]:hidden">
           <ThemeToggle />
@@ -57,7 +57,7 @@ export default function ProfilePage() {
             </TabsTrigger>
           ))}
         </TabsList>
-        <div className="max-w-3xl">
+        <div className="max-w-[1100px]">
           <TabsContent value="goals">
             {profile.isPending ? (
               <BlockSkeleton rows={5} />
@@ -67,17 +67,17 @@ export default function ProfilePage() {
               <ProfileForm profile={profile.data} />
             )}
           </TabsContent>
-          <TabsContent value="reminders">
+          <TabsContent value="reminders" className="max-w-3xl">
             <RemindersSection />
           </TabsContent>
-          <TabsContent value="memory">
+          <TabsContent value="memory" className="max-w-3xl">
             <MemorySection />
           </TabsContent>
-          <TabsContent value="account">
+          <TabsContent value="account" className="max-w-3xl">
             <AccountSection />
           </TabsContent>
           {user.is_admin && (
-            <TabsContent value="admin">
+            <TabsContent value="admin" className="max-w-3xl">
               <AdminSection />
             </TabsContent>
           )}

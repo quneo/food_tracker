@@ -1,16 +1,23 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { MACROS } from '@/lib/labels'
 import { num } from '@/lib/format'
 import type { Targets, Totals } from '@/types'
 
-const SIZE = 168
-const STROKE = 14
+const SIZE = 188
+const STROKE = 15
 const RADIUS = (SIZE - STROKE) / 2
 const LENGTH = 2 * Math.PI * RADIUS
 
 /** Eaten calories against the target: the ring fills up, the excess wraps in red. */
 export function CalorieRing({ eaten, target }: { eaten: number; target: number | null }) {
-  const share = target ? eaten / target : 0
+  // Starts empty and draws to the day's value once (the transition lives in CSS).
+  const [drawn, setDrawn] = useState(false)
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setDrawn(true))
+    return () => cancelAnimationFrame(frame)
+  }, [])
+  const share = target && drawn ? eaten / target : 0
   const main = Math.min(share, 1)
   const over = target ? Math.min(Math.max(share - 1, 0), 1) : 0
   const left = target ? Math.round(target - eaten) : null
@@ -21,7 +28,7 @@ export function CalorieRing({ eaten, target }: { eaten: number; target: number |
         ? `Съедено ${num(eaten)} из ${num(target)} ккал, осталось ${num(left)}`
         : `Съедено ${num(eaten)} из ${num(target)} ккал, больше цели на ${num(-left!)}`
   return (
-    <div className="relative mx-auto size-[168px] shrink-0" role="img" aria-label={label}>
+    <div className="relative mx-auto size-[188px] shrink-0" role="img" aria-label={label}>
       <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="size-full -rotate-90" aria-hidden="true">
         <circle
           cx={SIZE / 2}
@@ -42,7 +49,7 @@ export function CalorieRing({ eaten, target }: { eaten: number; target: number |
             strokeDasharray={LENGTH}
             strokeDashoffset={LENGTH * (1 - main)}
             className="ring-value"
-            style={{ opacity: main === 0 ? 0 : 1 }}
+            style={{ opacity: drawn && eaten > 0 ? 1 : 0 }}
           />
         )}
         {over > 0 && (

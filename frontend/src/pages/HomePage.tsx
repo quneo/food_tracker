@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight, ChartColumnBig, NotebookText, Plus, Scale, Send, Utensils } from 'lucide-react'
+import { Plus, Scale, Send, Utensils } from 'lucide-react'
 import { authApi, bodyApi, mealsApi } from '@/api/endpoints'
 import { keys } from '@/api/keys'
 import { useUser } from '@/hooks/useAuth'
@@ -19,6 +19,7 @@ import { WeightSheet, weightChange } from '@/components/progress/WeightEditor'
 import { TelegramLinkButton } from '@/components/shared/TelegramLinkButton'
 import { addDays, dayLabel, formatDay, num, signed, timeOf, todayIn } from '@/lib/format'
 import { botLink } from '@/lib/telegram'
+import breakfast from '@/assets/breakfast.webp'
 
 export default function HomePage() {
   const user = useUser()
@@ -28,11 +29,6 @@ export default function HomePage() {
   const summary = useQuery({
     queryKey: keys.today,
     queryFn: ({ signal }) => mealsApi.today({ signal }),
-  })
-  const config = useQuery({
-    queryKey: keys.authConfig,
-    queryFn: ({ signal }) => authApi.config({ signal }),
-    staleTime: Infinity,
   })
 
   const day = summary.data?.day ?? today
@@ -52,22 +48,8 @@ export default function HomePage() {
         </span>
       </PageHeader>
 
-      {!user.telegram_id && (
-        <Card className="mb-4 border-primary/30">
-          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm">
-              <p className="font-medium">Привяжите Telegram</p>
-              <p className="text-muted-foreground">
-                Фото еды, вес и вопросы удобнее всего присылать боту — записи появятся здесь.
-              </p>
-            </div>
-            <TelegramLinkButton className="shrink-0" />
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:items-start">
-        <div className="flex flex-col gap-4">
+      <div className="page-grid">
+        <div className="flex min-w-0 flex-col gap-4">
           <Card>
             <CardHeader>
               <CardTitle>Калории и БЖУ</CardTitle>
@@ -80,18 +62,26 @@ export default function HomePage() {
             <CardContent>
               {summary.isPending ? (
                 <div className="flex flex-col items-center gap-6 sm:flex-row">
-                  <Skeleton className="size-[168px] rounded-full" />
+                  <Skeleton className="size-[188px] rounded-full" />
                   <BlockSkeleton rows={3} className="w-full flex-1" />
                 </div>
               ) : summary.isError ? (
                 <ErrorState error={summary.error} retry={() => summary.refetch()} />
               ) : (
-                <div className="flex flex-col items-stretch gap-6 sm:flex-row sm:items-center">
+                <div className="flex flex-col items-stretch gap-7 sm:flex-row sm:items-center">
                   <CalorieRing
                     eaten={summary.data.totals.kcal}
                     target={summary.data.targets.kcal}
                   />
                   <div className="flex min-w-0 flex-1 flex-col gap-4">
+                    <p className="text-[15px]">
+                      Съедено{' '}
+                      <span className="serif-number text-lg">{num(summary.data.totals.kcal)}</span>{' '}
+                      ккал
+                      {summary.data.drafts > 0 && (
+                        <span className="text-muted-foreground">, черновики не в счет</span>
+                      )}
+                    </p>
                     <MacroTargets totals={summary.data.totals} targets={summary.data.targets} />
                     {summary.data.targets.kcal === null && (
                       <p className="text-sm text-muted-foreground">
@@ -133,20 +123,8 @@ export default function HomePage() {
               <EmptyState
                 icon={Utensils}
                 title="Сегодня пока пусто"
-                description="Пришлите боту фото еды или напишите, что съели, — запись появится здесь."
+                description="Пришлите боту фото тарелки или напишите, что съели, и запись появится здесь."
               >
-                {config.data && (
-                  <Button asChild variant="outline">
-                    <a
-                      href={botLink(config.data.bot_username)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <Send />
-                      Открыть бота
-                    </a>
-                  </Button>
-                )}
                 <Button variant="ghost" onClick={() => setAdding(true)}>
                   <Plus />
                   Добавить вручную
@@ -156,22 +134,64 @@ export default function HomePage() {
           </Card>
         </div>
 
-        <div className="flex flex-col gap-4">
+        <aside className="page-side" aria-label="Вес и бот">
+          {!user.telegram_id && <LinkTelegramCard />}
           <WeightCard today={today} />
-          <nav aria-label="Быстрые ссылки" className="grid grid-cols-2 gap-3">
-            <QuickLink to="/diary" icon={NotebookText} label="Дневник" hint="Все записи" />
-            <QuickLink
-              to="/analytics"
-              icon={ChartColumnBig}
-              label="Аналитика"
-              hint="Графики и отчет"
-            />
-          </nav>
-        </div>
+          {user.telegram_id && <BotCard />}
+        </aside>
       </div>
 
       <NewMealSheet open={adding} onOpenChange={setAdding} />
     </>
+  )
+}
+
+function LinkTelegramCard() {
+  return (
+    <Card className="border-primary/30">
+      <CardHeader>
+        <CardTitle>Привяжите Telegram</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <p className="text-sm text-muted-foreground">
+          Еду, вес и вопросы удобнее всего присылать боту. Записи сразу появятся здесь.
+        </p>
+        <TelegramLinkButton className="self-start" />
+      </CardContent>
+    </Card>
+  )
+}
+
+/** The bot is where things get written down; this card says how, with the house drawing. */
+function BotCard() {
+  const config = useQuery({
+    queryKey: keys.authConfig,
+    queryFn: ({ signal }) => authApi.config({ signal }),
+    staleTime: Infinity,
+  })
+  return (
+    <Card className="overflow-hidden pt-0">
+      <img
+        src={breakfast}
+        alt=""
+        className="mx-auto -mb-2 w-[78%] max-w-[260px] pt-4 select-none"
+        draggable={false}
+      />
+      <CardContent className="flex flex-col gap-3">
+        <p className="section-title">Записывайте в Telegram</p>
+        <p className="text-sm text-muted-foreground">
+          Фото тарелки или пара слов: «гречка с курицей, 300 г». Вес — просто числом.
+        </p>
+        {config.data && (
+          <Button asChild variant="outline" className="self-start">
+            <a href={botLink(config.data.bot_username)} target="_blank" rel="noopener noreferrer">
+              <Send />
+              Открыть @{config.data.bot_username}
+            </a>
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -202,9 +222,9 @@ function WeightCard({ today }: { today: string }) {
         ) : latest ? (
           <div className="flex items-end justify-between gap-4">
             <div>
-              <p className="text-[32px] leading-none font-semibold tracking-tight">
+              <p className="hero-number text-[40px]">
                 {num(latest.weight_kg, 1)}{' '}
-                <span className="text-lg font-normal text-muted-foreground">кг</span>
+                <span className="font-sans text-lg font-normal text-muted-foreground">кг</span>
               </p>
               <p className="mt-2 text-sm text-muted-foreground">
                 {dayLabel(latest.measured_on, today)}, {timeOf(latest.measured_at)}
@@ -212,7 +232,7 @@ function WeightCard({ today }: { today: string }) {
             </div>
             {change !== null && (
               <div className="text-right">
-                <p className="text-lg font-semibold tabular">{signed(change)} кг</p>
+                <p className="serif-number text-lg">{signed(change)} кг</p>
                 <p className="text-xs text-muted-foreground">за 7 дней</p>
               </div>
             )}
@@ -226,47 +246,13 @@ function WeightCard({ today }: { today: string }) {
         {latest && (
           <Link
             to="/progress?tab=body"
-            className="mt-4 inline-flex min-h-11 items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline"
+            className="mt-4 inline-flex min-h-11 items-center text-sm font-medium text-primary underline-offset-4 hover:underline"
           >
             История и замеры
-            <ArrowRight className="size-4" />
           </Link>
         )}
       </CardContent>
       <WeightSheet open={adding} onOpenChange={setAdding} />
     </Card>
-  )
-}
-
-function QuickLink({
-  to,
-  icon: Icon,
-  label,
-  hint,
-}: {
-  to: string
-  icon: typeof NotebookText
-  label: string
-  hint: string
-}) {
-  return (
-    <Link
-      to={to}
-      className="group flex flex-col gap-3 rounded-[20px] border bg-card p-4 shadow-[var(--card-shadow)] transition-colors hover:border-primary/40"
-    >
-      <span className="grid size-10 place-items-center rounded-xl bg-accent text-accent-foreground">
-        <Icon className="size-5" aria-hidden="true" />
-      </span>
-      <span>
-        <span className="flex items-center gap-1 font-medium">
-          {label}
-          <ArrowRight
-            className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5"
-            aria-hidden="true"
-          />
-        </span>
-        <span className="text-sm text-muted-foreground">{hint}</span>
-      </span>
-    </Link>
   )
 }

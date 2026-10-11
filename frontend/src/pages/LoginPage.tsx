@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LeafMark } from '@/components/shared/LeafMark'
+import breakfast from '@/assets/breakfast.webp'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
 import type { LoginRequest, TelegramWidgetUser, User } from '@/types'
 
@@ -66,16 +67,33 @@ export default function LoginPage() {
   return (
     <div className="mx-auto flex min-h-dvh max-w-[1100px] flex-col px-4 sm:px-7">
       <header className="flex h-[72px] items-center justify-between">
-        <span className="flex items-center gap-2.5 text-[17px] font-semibold tracking-tight">
+        <span className="flex items-center gap-2.5 font-serif text-[21px] font-semibold">
           <LeafMark />
           Дневник
         </span>
         <ThemeToggle />
       </header>
-      <main className="grid flex-1 place-items-start justify-items-center pt-6 pb-16 sm:place-items-center sm:pt-0">
+      <main className="grid flex-1 content-start items-center justify-items-center gap-10 pt-2 pb-16 lg:grid-cols-[minmax(0,1fr)_420px] lg:content-center lg:justify-items-stretch lg:gap-16">
+        <section className="flex flex-col items-center gap-5 text-center lg:items-start lg:text-left">
+          <img
+            src={breakfast}
+            alt=""
+            draggable={false}
+            className="w-44 select-none sm:w-52 lg:w-[min(100%,420px)]"
+          />
+          <div className="hidden max-w-[460px] flex-col gap-3 lg:flex">
+            <p className="font-serif text-[42px] leading-[1.08] font-semibold tracking-tight">
+              Еда, вес и прогресс в одном дневнике
+            </p>
+            <p className="text-[17px] text-muted-foreground">
+              Пишите боту в Telegram: фото тарелки или пару слов. Здесь — дни, графики и фото
+              прогресса.
+            </p>
+          </div>
+        </section>
         <Card className="w-full max-w-[420px] gap-6 py-7">
           <CardHeader className="gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight">Вход</h1>
+            <h1 className="font-serif text-[28px] font-semibold tracking-tight">Вход</h1>
             <CardDescription className="text-[15px]">
               {config.data?.bastion
                 ? 'Дневник питания, веса и замеров. Вход через Bastion: логин, пароль и код из приложения.'

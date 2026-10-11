@@ -152,40 +152,44 @@ function WeightBlock() {
             description="Пришлите вес боту, например «72,4», или запишите здесь."
           />
         ) : (
-          <>
-            {points.length > 1 && (
+          <div className="grid gap-4 min-[1180px]:grid-cols-[minmax(0,1fr)_300px] min-[1180px]:items-start">
+            {points.length > 1 ? (
               <TrendLine
                 points={points}
                 unit="кг"
                 name="Вес"
                 target={profile.data?.target_weight_kg}
               />
+            ) : (
+              <span />
             )}
-            <ul className="row-list -mx-2">
-              {shown.map((entry) => (
-                <li key={entry.id} className="flex items-center gap-3 px-2 py-1.5">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium tabular">{num(entry.weight_kg, 1)} кг</p>
-                    <p className="truncate text-sm text-muted-foreground">
-                      {dateTimeLabel(entry.measured_at, today)}
-                      {SOURCE[entry.source] ? ` · ${SOURCE[entry.source]}` : ''}
-                      {entry.note ? ` · ${entry.note}` : ''}
-                    </p>
-                  </div>
-                  <RowMenu
-                    label={`${num(entry.weight_kg, 1)} кг`}
-                    onEdit={() => setEditing(entry)}
-                    onDelete={() => setDeleting(entry)}
-                  />
-                </li>
-              ))}
-            </ul>
-            {list.length > 8 && (
-              <Button variant="ghost" className="self-center" onClick={() => setAll(!all)}>
-                {all ? 'Свернуть' : `Показать все (${list.length})`}
-              </Button>
-            )}
-          </>
+            <div className="flex flex-col gap-2 min-[1180px]:max-h-[420px] min-[1180px]:overflow-x-hidden min-[1180px]:overflow-y-auto">
+              <ul className="row-list">
+                {shown.map((entry) => (
+                  <li key={entry.id} className="flex items-center gap-3 px-2 py-1.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="serif-number tabular">{num(entry.weight_kg, 1)} кг</p>
+                      <p className="truncate text-sm text-muted-foreground">
+                        {dateTimeLabel(entry.measured_at, today)}
+                        {SOURCE[entry.source] ? `, ${SOURCE[entry.source].toLowerCase()}` : ''}
+                        {entry.note ? `. ${entry.note}` : ''}
+                      </p>
+                    </div>
+                    <RowMenu
+                      label={`${num(entry.weight_kg, 1)} кг`}
+                      onEdit={() => setEditing(entry)}
+                      onDelete={() => setDeleting(entry)}
+                    />
+                  </li>
+                ))}
+              </ul>
+              {list.length > 8 && (
+                <Button variant="ghost" className="self-center" onClick={() => setAll(!all)}>
+                  {all ? 'Свернуть' : `Показать все (${list.length})`}
+                </Button>
+              )}
+            </div>
+          </div>
         )}
       </CardContent>
       <WeightSheet
