@@ -72,13 +72,13 @@ def receive(
 
 class LinkIn(BaseModel):
     user: TelegramUser
-    data: str = Field(max_length=64)
+    code: str | None = Field(default=None, max_length=64)
 
 
 @router.post("/link")
 def link(data: LinkIn, db: Db):
-    """Buttons k:y/k:n under a "link Telegram" offer: the account may not exist yet."""
-    return service.link_answer(db, data.user.model_dump(), data.data)
+    """/link <key> from a Telegram account that may not be known yet."""
+    return {"view": service.link(db, data.user.model_dump(), data.code)}
 
 
 @router.post("/press")

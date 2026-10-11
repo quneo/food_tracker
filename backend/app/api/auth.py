@@ -86,8 +86,12 @@ def config():
     return {
         "bot_username": settings.telegram_bot_username,
         "registration": settings.registration,
-        # The Login Widget only works on the domain set in BotFather (/setdomain).
-        "widget": bool(settings.app_url and settings.app_url.startswith("https://")),
+        # The Login Widget needs the site's domain set in BotFather (/setdomain): opt-in.
+        "widget": bool(
+            settings.telegram_widget
+            and settings.app_url
+            and settings.app_url.startswith("https://")
+        ),
         "bastion": settings.registration == "bastion",
         "bastion_url": settings.bastion_link,
     }
@@ -105,13 +109,14 @@ def bastion_login(data: BastionLogin, request: Request, response: Response, db: 
 
 @router.post("/telegram-link")
 def start_telegram_link(user: CurrentUser, db: Db):
-    """A link that opens the bot; confirming there attaches this Telegram to the account."""
+    """A one-time key: the person sends "/link <key>" to the bot."""
     if user.telegram_id:
         raise DomainError("Telegram уже привязан")
     link = users.start_link(db, user)
-    username = get_settings().telegram_bot_username
     return {
-        "link": f"https://t.me/{username}?start=link_{link.code}",
+        "code": link.code,
+        "command": f"/link {link.code}",
+        "bot_username": get_settings().telegram_bot_username,
         "expires_in": int(users.LOGIN_TTL.total_seconds()),
     }
 

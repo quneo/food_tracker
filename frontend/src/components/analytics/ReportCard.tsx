@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/card'
 import { MACROS, measurement } from '@/lib/labels'
 import { days, num, rangeLabel, signed } from '@/lib/format'
+import { copyText } from '@/lib/clipboard'
 import type { Report } from '@/types'
 
 const ROWS = [
@@ -75,12 +76,10 @@ export function ReportCard({ report }: { report: Report }) {
             size="icon"
             aria-label="Скопировать отчет текстом"
             title="Скопировать текстом"
-            onClick={() =>
-              navigator.clipboard
-                .writeText(reportText(report))
-                .then(() => toast.success('Отчет скопирован'))
-                .catch(() => toast.error('Не удалось скопировать'))
-            }
+            onClick={async () => {
+              if (await copyText(reportText(report))) toast.success('Отчет скопирован')
+              else toast.error('Не удалось скопировать')
+            }}
           >
             <ClipboardCopy />
           </Button>

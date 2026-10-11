@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
-from aiogram.types import MenuButtonWebApp, WebAppInfo
+from aiogram.types import MenuButtonDefault, MenuButtonWebApp, WebAppInfo
 
 from app import handlers
 from app.api import backend
@@ -31,13 +31,16 @@ async def main():
     dispatcher.message.filter(F.chat.type == "private")
     dispatcher.include_router(handlers.router)
     await bot.set_my_commands(handlers.COMMANDS)
-    if settings.public_url and settings.public_url.startswith("https://"):
+    if settings.menu_button and settings.public_url and settings.public_url.startswith("https://"):
         # The menu button opens the diary inside Telegram, signed in automatically.
         await bot.set_chat_menu_button(
             menu_button=MenuButtonWebApp(
                 text="Дневник", web_app=WebAppInfo(url=settings.public_url)
             )
         )
+    else:
+        # Anyone who opens the bot would see the site's address on the button.
+        await bot.set_chat_menu_button(menu_button=MenuButtonDefault())
     delivery = asyncio.create_task(outbox_loop(bot, backend))
     try:
         await dispatcher.start_polling(bot, allowed_updates=["message", "callback_query"])

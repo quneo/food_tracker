@@ -27,7 +27,10 @@ export interface AuthConfig {
 }
 
 export interface TelegramLink {
-  link: string
+  /** One-time key; the person sends "/link <key>" to the bot. */
+  code: string
+  command: string
+  bot_username: string
   expires_in: number
 }
 

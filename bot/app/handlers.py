@@ -21,6 +21,7 @@ COMMANDS = [
     BotCommand(command="progress", description="Сохранить фото прогресса"),
     BotCommand(command="new", description="Начать новый разговор"),
     BotCommand(command="app", description="Дневник на сайте"),
+    BotCommand(command="link", description="Привязать Telegram ключом с сайта"),
     BotCommand(command="help", description="Что я умею"),
 ]
 albums: dict[str, list[Message]] = {}
@@ -88,6 +89,19 @@ async def progress(message: Message, bot: Bot):
 @router.message(Command("app"))
 async def app_link(message: Message, bot: Bot):
     await reply(message, bot, backend.call, "GET", "bot/app", message.from_user.id)
+
+
+@router.message(Command("link"))
+async def link(message: Message, command: CommandObject, bot: Bot):
+    """/link <key>: the one-time key from the site's profile attaches this Telegram."""
+    await reply(
+        message,
+        bot,
+        backend.call,
+        "POST",
+        "bot/link",
+        json={"user": profile(message), "code": command.args},
+    )
 
 
 async def forward(messages: list[Message], bot: Bot):
@@ -174,27 +188,9 @@ async def other(message: Message, bot: Bot):
 @router.callback_query(F.data)
 async def press(callback: CallbackQuery, bot: Bot):
     try:
-        if callback.data.startswith("k:"):
-            # Linking this Telegram to an account from the site: not registered yet.
-            user = callback.from_user
-            result = await backend.call(
-                "POST",
-                "bot/link",
-                json={
-                    "user": {
-                        "id": user.id,
-                        "first_name": user.first_name,
-                        "last_name": user.last_name,
-                        "username": user.username,
-                        "language_code": user.language_code,
-                    },
-                    "data": callback.data,
-                },
-            )
-        else:
-            result = await backend.call(
-                "POST", "bot/press", callback.from_user.id, json={"data": callback.data}
-            )
+        result = await backend.call(
+            "POST", "bot/press", callback.from_user.id, json={"data": callback.data}
+        )
     except ApiError as error:
         await callback.answer(str(error)[:200], show_alert=True)
         return

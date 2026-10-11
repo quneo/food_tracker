@@ -44,12 +44,11 @@ BASTION_ERRORS = {
 
 
 def link_first() -> str:
-    """For a Telegram account nobody has linked yet (REGISTRATION=bastion)."""
-    site = get_settings().app_url
-    where = f"на сайте {site}" if site else "на сайте дневника"
+    """For a Telegram account nobody has linked yet (REGISTRATION=bastion). Anyone can
+    open the bot, so the site's address is not given here."""
     return (
-        f"Дневник открывается через Bastion. Войдите {where}, затем в профиле нажмите "
-        "«Привязать Telegram» — и сможете писать сюда."
+        "Этот Telegram еще не привязан к дневнику. Войдите на сайт дневника через Bastion, "
+        "в профиле нажмите «Привязать Telegram» и отправьте сюда команду /link с ключом."
     )
 
 
@@ -325,9 +324,19 @@ def poll_login(db: Session, code: str, poll_secret: str) -> tuple[str, User | No
 
 
 def start_link(db: Session, user: User) -> LoginRequest:
+    """A one-time key the person sends to the bot as "/link <key>" (valid 10 minutes).
+    A new key replaces the previous one."""
+    for old in db.scalars(
+        select(LoginRequest).where(
+            LoginRequest.user_id == user.id,
+            LoginRequest.purpose == "link",
+            LoginRequest.status == "pending",
+        )
+    ):
+        old.status = "rejected"
     request = LoginRequest(
         purpose="link",
-        code=new_token(18),
+        code=new_token(12),
         poll_hash=token_hash(new_token()),
         user_id=user.id,
         expires_at=utcnow() + LOGIN_TTL,
@@ -337,22 +346,14 @@ def start_link(db: Session, user: User) -> LoginRequest:
     return request
 
 
-def link_target(db: Session, code: str) -> User | None:
-    request = pending_login(db, code, "link")
-    return db.get(User, request.user_id) if request else None
-
-
-def link_telegram(db: Session, code: str, info: dict, approve: bool) -> str:
-    """The person answered in the chat; returns what to tell them."""
-    request = pending_login(db, code, "link")
+def link_telegram(db: Session, code: str, info: dict) -> str:
+    """ "/link <key>" in the chat: attaches this Telegram to the key's account."""
+    request = pending_login(db, code.strip(), "link")
     if not request:
         raise DomainError(
-            "Ссылка для привязки устарела. Нажмите «Привязать Telegram» на сайте еще раз."
+            "Ключ недействителен или истек. Получите новый на сайте: Профиль → Аккаунт → "
+            "«Привязать Telegram»."
         )
-    if not approve:
-        request.status = "rejected"
-        db.commit()
-        return "✖️ Привязка отменена."
     user = db.get(User, request.user_id)
     telegram_id = int(info["id"])
     owner = by_telegram(db, telegram_id)

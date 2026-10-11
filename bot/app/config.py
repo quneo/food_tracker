@@ -9,8 +9,11 @@ class Settings(BaseSettings):
     telegram_proxy: str | None = None
     bot_api_secret: str = Field(min_length=32)
     backend_url: str = "http://backend:8000/api"
-    # The web app (https): opens as a Mini App from the chat's menu button.
+    # The web app (https).
     public_url: str | None = None
+    # Put the web app on the chat's menu button (a Mini App). Off: the button would show
+    # the site's address to anyone who opens the bot.
+    menu_button: bool = False
     outbox_interval: float = 1.5
 
     @field_validator("telegram_proxy", "public_url", mode="before")

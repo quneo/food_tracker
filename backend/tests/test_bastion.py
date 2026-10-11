@@ -106,22 +106,19 @@ def test_link_telegram_through_the_bot(app, bastion, sessions):
     bot = browser(app)
     bot.headers.update(bot_headers(7777))
 
-    # Before linking, the bot does not know this Telegram account.
+    # Before linking, the bot does not know this Telegram account, and it never shows the
+    # site's address to strangers.
     view = bot.post("/api/bot/start", json={"user": {"id": 7777, "first_name": "Vadim"}}).json()
-    assert "Bastion" in view["view"]["text"]
+    assert "/link" in view["view"]["text"] and "https://" not in view["view"]["text"]
     assert bot.post("/api/bot/messages", data={"text": "вес 80"}).status_code == 401
 
-    link = web.post("/api/auth/telegram-link").json()["link"]
-    code = link.split("start=link_")[1]
-    offer = bot.post(
-        "/api/bot/start",
-        json={"user": {"id": 7777, "first_name": "Vadim"}, "payload": f"link_{code}"},
-    ).json()["view"]
-    assert "Вадим (vadim)" in offer["text"]
-    assert offer["buttons"][0][0]["data"] == f"k:y:{code}"
+    key = web.post("/api/auth/telegram-link").json()
+    assert key["command"] == f"/link {key['code']}" and key["expires_in"] == 600
+    wrong = bot.post("/api/bot/link", json={"user": {"id": 7777}, "code": "guess"}).json()
+    assert "недействителен" in wrong["view"]["text"]
 
     answer = bot.post(
-        "/api/bot/link", json={"user": {"id": 7777, "username": "vad"}, "data": f"k:y:{code}"}
+        "/api/bot/link", json={"user": {"id": 7777, "username": "vad"}, "code": key["code"]}
     ).json()
     assert answer["view"]["text"].startswith("✅ Telegram привязан")
     me = web.get("/api/auth/me").json()
@@ -134,8 +131,21 @@ def test_link_telegram_through_the_bot(app, bastion, sessions):
         .startswith("⚖️")
     )
     assert web.get("/api/weights").json()[0]["weight_kg"] == 80
-    again = bot.post("/api/bot/link", json={"user": {"id": 7777}, "data": f"k:y:{code}"}).json()
-    assert "устарела" in again["view"]["text"]
+    again = bot.post("/api/bot/link", json={"user": {"id": 7777}, "code": key["code"]}).json()
+    assert "недействителен" in again["view"]["text"]
+
+
+def test_new_key_replaces_the_old_one(app, bastion):
+    web = browser(app)
+    sign_in(web)
+    first = web.post("/api/auth/telegram-link").json()["code"]
+    second = web.post("/api/auth/telegram-link").json()["code"]
+    bot = browser(app)
+    bot.headers.update(bot_headers(5151))
+    old = bot.post("/api/bot/link", json={"user": {"id": 5151}, "code": first}).json()
+    assert "недействителен" in old["view"]["text"]
+    new = bot.post("/api/bot/link", json={"user": {"id": 5151}, "code": f" {second} "}).json()
+    assert new["view"]["text"].startswith("✅")
 
 
 def test_one_telegram_for_one_account(app, bastion):
@@ -143,12 +153,12 @@ def test_one_telegram_for_one_account(app, bastion):
     sign_in(first, "vadim")
     sign_in(second, "daria")
     for client in (first, second):
-        code = client.post("/api/auth/telegram-link").json()["link"].split("start=link_")[1]
+        code = client.post("/api/auth/telegram-link").json()["code"]
         result = (
             browser(app)
             .post(
                 "/api/bot/link",
-                json={"user": {"id": 4242}, "data": f"k:y:{code}"},
+                json={"user": {"id": 4242}, "code": code},
                 headers=bot_headers(4242),
             )
             .json()

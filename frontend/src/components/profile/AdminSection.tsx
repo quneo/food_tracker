@@ -20,6 +20,7 @@ import { Label } from '@/components/ui/label'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
 import { ResponsiveSheet } from '@/components/shared/ResponsiveSheet'
 import { BlockSkeleton, ErrorState } from '@/components/shared/States'
+import { copyText } from '@/lib/clipboard'
 import { num, parseNumber, utcLabel } from '@/lib/format'
 import type { AdminUser, Invite } from '@/types'
 
@@ -29,11 +30,9 @@ const RUNNERS: Record<string, string> = {
   off: 'выключен',
 }
 
-function copy(text: string) {
-  navigator.clipboard
-    .writeText(text)
-    .then(() => toast.success('Ссылка скопирована'))
-    .catch(() => toast.error('Не удалось скопировать. Выделите ссылку вручную'))
+async function copy(text: string) {
+  if (await copyText(text)) toast.success('Ссылка скопирована')
+  else toast.error('Не удалось скопировать. Выделите ссылку вручную')
 }
 
 export function AdminSection() {

@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     default_timezone: str = "Asia/Krasnoyarsk"
     session_days: int = 30
     cookie_secure: bool = False
+    # Show the Telegram Login Widget; needs the domain set for the bot in BotFather.
+    telegram_widget: bool = False
 
     # Photo storage: MinIO (any S3 API).
     s3_endpoint: str = "minio:9000"
