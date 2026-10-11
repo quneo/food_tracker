@@ -1,0 +1,42 @@
+# Codex config for the food tracker runner: Codex as a plain model call.
+# Installed as <runner home>/codex-home/config.toml (CODEX_HOME of the runner).
+# No shell, no web search, no MCP, no memories: everything the model needs is in the prompt.
+# Check it once with:  CODEX_HOME=~/codex-home codex exec --strict-config ... (see docs/vps-codex.md)
+
+# Pick a model your ChatGPT plan offers and that accepts images (`codex` -> /model).
+model = "gpt-6-luna"
+model_reasoning_effort = "medium"
+model_reasoning_summary = "none"
+hide_agent_reasoning = true
+
+approval_policy = "never"
+sandbox_mode = "read-only"
+web_search = "disabled"
+check_for_update_on_startup = false
+cli_auth_credentials_store = "file"
+
+[history]
+persistence = "none"
+
+[tools]
+view_image = false
+
+[features]
+shell_tool = false
+unified_exec = false
+multi_agent = false
+apps = false
+memories = false
+hooks = false
+goals = false
+remote_plugin = false
+skill_mcp_dependency_install = false
+
+[analytics]
+enabled = false
+
+[feedback]
+enabled = false
+
+[otel]
+metrics_exporter = "none"
