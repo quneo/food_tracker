@@ -5,9 +5,17 @@ from importlib import resources
 
 
 @cache
+def template(name: str) -> str:
+    return resources.files("app.ai").joinpath(f"templates/{name}.md").read_text(encoding="utf-8")
+
+
 def instructions() -> str:
-    return resources.files("app.ai").joinpath("templates/assistant.md").read_text(encoding="utf-8")
+    return template("assistant")
 
 
-def assemble(context: str) -> str:
-    return f"{instructions().strip()}\n\n# Context\n\n{context}\n"
+def assemble(context: str, mode: str = "turn") -> str:
+    """mode "review" adds the instructions for a review of the recent days."""
+    parts = [instructions().strip()]
+    if mode == "review":
+        parts.append(template("review").strip())
+    return "\n\n".join(parts) + f"\n\n# Context\n\n{context}\n"

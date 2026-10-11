@@ -9,7 +9,19 @@ from sqlalchemy.exc import IntegrityError
 
 from app import maintenance
 from app.ai.jobs import worker
-from app.api import admin, analytics, auth, bot, meals, media, memory, profile, progress, reminders
+from app.api import (
+    admin,
+    analytics,
+    auth,
+    bot,
+    meals,
+    media,
+    memory,
+    products,
+    profile,
+    progress,
+    reminders,
+)
 from app.core.exceptions import DomainError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -34,6 +46,7 @@ for router in (
     auth.router,
     profile.router,
     meals.router,
+    products.router,
     progress.router,
     media.router,
     analytics.router,

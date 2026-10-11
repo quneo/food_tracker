@@ -25,6 +25,10 @@ class Strict(BaseModel):
 
 class FoodItem(Strict):
     name: str = Field(description="Food in Russian as people say it: 'Гречка отварная'.")
+    product_id: int | None = Field(
+        description="Id of the user's saved product ([product N]) when this item is that "
+        "product; the app then computes kcal and macros from its label and `grams`."
+    )
     grams: float = Field(description="Best estimate of the edible weight in grams.")
     grams_source: Literal["estimated", "stated", "label"] = Field(
         description="estimated = you guessed it; stated = the user gave the weight or "
@@ -53,6 +57,11 @@ class MealEstimate(Strict):
     assumptions: list[str] = Field(
         description="Key assumptions in Russian, short (portion size, cooking method, hidden "
         "fat). Empty if the user gave exact data."
+    )
+    comment: str | None = Field(
+        description="Your remark about this meal for the user, in Russian: one short sentence "
+        "usually; 2-4 sentences when there is something worth saying. Practical, specific, "
+        "friendly. Do not repeat the card's numbers."
     )
 
 
@@ -148,7 +157,7 @@ class UpdateProfile(Strict):
 
 class SetReminder(Strict):
     kind: Literal["set_reminder"]
-    reminder_kind: Literal["meal", "weight", "photo", "custom"]
+    reminder_kind: Literal["meal", "weight", "photo", "review", "custom"]
     time: str = Field(description="Local 'HH:MM'.")
     days: list[int] = Field(description="ISO weekdays, 1 = Monday ... 7 = Sunday.")
     text: str | None = Field(description="Reminder text for custom reminders, else null.")
@@ -157,6 +166,33 @@ class SetReminder(Strict):
 class DeleteReminder(Strict):
     kind: Literal["delete_reminder"]
     reminder_id: int
+
+
+class SaveProduct(Strict):
+    kind: Literal["save_product"]
+    product_id: int | None = Field(
+        description="Id of a saved product to update ([product N]); null to add a new one."
+    )
+    name: str = Field(
+        description="Name in Russian with brand and the key feature: 'Молоко Простоквашино 2,5%'."
+    )
+    brand: str | None
+    kcal: float = Field(description="Per 100 g (or 100 ml).")
+    protein: float = Field(description="Grams per 100 g.")
+    fat: float = Field(description="Grams per 100 g.")
+    carbs: float = Field(description="Grams per 100 g.")
+    portion_name: str | None = Field(description="Usual portion: 'стакан', 'батончик', 'баночка'.")
+    portion_grams: float | None = Field(description="Grams in that portion.")
+    package_grams: float | None = Field(description="Package size in grams or ml, if known.")
+    comment: str | None = Field(description="Anything worth keeping: taste, where to buy.")
+    use_photos: bool = Field(
+        description="Keep the photos of the current message as this product's label photos."
+    )
+
+
+class DeleteProduct(Strict):
+    kind: Literal["delete_product"]
+    product_id: int
 
 
 Action = Annotated[
@@ -173,7 +209,9 @@ Action = Annotated[
     | Forget
     | UpdateProfile
     | SetReminder
-    | DeleteReminder,
+    | DeleteReminder
+    | SaveProduct
+    | DeleteProduct,
     Field(discriminator="kind"),
 ]
 

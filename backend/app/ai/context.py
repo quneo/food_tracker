@@ -33,6 +33,12 @@ ACTIVITY = {
 DAY_WORDS = {"сегодня": 0, "вчера": 1, "позавчера": 2}
 DATE = re.compile(r"\b(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?\b")
 HISTORY_DAYS = 60
+# A question about eating overall brings the last two weeks into the context.
+STATS_WORDS = re.compile(
+    r"анализ|разбер|разбор|рацион|за недел|за месяц|в среднем|итог|статистик|тенденц|динамик"
+    r"|как я пита|что улучш|что не так",
+    re.IGNORECASE,
+)
 RECENT_MESSAGES = 12
 
 
@@ -48,7 +54,10 @@ def macros(record) -> str:
 
 
 class Context:
-    def __init__(self, db: Session, user: User, message: ChatMessage):
+    def __init__(
+        self, db: Session, user: User, message: ChatMessage, review_days: int | None = None
+    ):
+        self.review_days = review_days
         self.db = db
         self.user = user
         self.message = message
@@ -69,6 +78,8 @@ class Context:
             self.section_similar_meals(),
             self.section_frequent_foods(),
             self.section_body(),
+            self.section_products(),
+            self.section_stats(),
             self.section_reminders(),
             self.section_memory(),
             self.section_conversation(),
@@ -383,6 +394,111 @@ class Context:
             lines.append(f"[{local:%H:%M}] {who}{photos}: {text}")
         return "## Недавний диалог\n" + "\n".join(lines) if lines else ""
 
+    def section_products(self) -> str:
+        from app.nutrition.products import list_products
+
+        products = list_products(self.db, self.user.id)
+        if not products:
+            return ""
+        if len(products) > 60:
+            words = memory.stems(self.text)
+            matching = [
+                product
+                for product in products
+                if words & memory.stems(f"{product.name} {product.brand or ''}")
+            ]
+            products = matching + [p for p in products[:40] if p not in matching]
+        lines = []
+        for product in products:
+            line = (
+                f"- [product {product.id}] {product.name}"
+                + (f" ({product.brand})" if product.brand else "")
+                + f": на 100 г {n(product.kcal)} ккал, Б {n(product.protein, 1)} / "
+                f"Ж {n(product.fat, 1)} / У {n(product.carbs, 1)}"
+            )
+            if product.portion_grams:
+                portion = product.portion_name or "порция"
+                line += f"; {portion} {n(product.portion_grams)} г"
+            if product.package_grams:
+                line += f"; упаковка {n(product.package_grams)} г"
+            if product.comment:
+                line += f"; {product.comment}"
+            lines.append(line)
+        return "## Мои продукты (значения с этикеток)\n" + "\n".join(lines)
+
+    def wants_stats(self) -> bool:
+        return bool(STATS_WORDS.search(self.text))
+
+    def section_stats(self) -> str:
+        """Day by day numbers for a review, or when the person asks about their eating."""
+        from app.analytics.service import daily, report
+
+        days = self.review_days or (14 if self.wants_stats() else 0)
+        if not days:
+            return ""
+        start = self.today - timedelta(days=days - 1)
+        rows = daily(self.db, self.user, start, self.today)
+        meals = self.db.scalars(
+            select(Meal).where(
+                Meal.user_id == self.user.id,
+                Meal.status == "confirmed",
+                Meal.eaten_on >= start,
+            )
+        ).all()
+        times: dict[date, list[str]] = defaultdict(list)
+        for meal in meals:
+            times[meal.eaten_on].append(f"{to_local(meal.eaten_at, self.tz):%H:%M}")
+        target = self.user.profile.kcal_target
+        status = {"complete": "полный", "partial": "неполный", "empty": "нет записей"}
+        lines = []
+        for row in rows:
+            day = row["day"]
+            label = f"{day:%d.%m} {WEEKDAYS[day.weekday()][:2]}"
+            if row["status"] == "empty":
+                lines.append(f"- {label}: нет записей")
+                continue
+            share = f" ({round(row['kcal'] / target * 100)}%)" if target else ""
+            eaten = sorted(times.get(day, []))
+            span = f", {eaten[0]}–{eaten[-1]}" if eaten else ""
+            lines.append(
+                f"- {label}: {n(row['kcal'])} ккал{share}, Б {n(row['protein'])} / "
+                f"Ж {n(row['fat'])} / У {n(row['carbs'])}, приемов {row['meals']}{span}, "
+                f"{status[row['status']]}"
+            )
+        summary = report(self.db, self.user, start, self.today)
+        averages = summary["averages"]
+        extra = [
+            f"Дней с записями {summary['logged_days']} из {summary['days']}, полных "
+            f"{summary['complete_days']}. Средние ниже — по полным дням.",
+        ]
+        if averages["kcal"] is not None:
+            extra.append(
+                f"В среднем: {n(averages['kcal'])} ккал, Б {n(averages['protein'])} / "
+                f"Ж {n(averages['fat'])} / У {n(averages['carbs'])}"
+            )
+        if summary["days_within_target"] is not None and summary["counted_days"]:
+            extra.append(
+                f"Дней в пределах ±10% от нормы: {summary['days_within_target']} из "
+                f"{summary['counted_days']}"
+            )
+        if summary["weight"]:
+            weight = summary["weight"]
+            extra.append(
+                f"Вес: {n(weight['first'], 1)} → {n(weight['last'], 1)} кг "
+                f"({'+' if weight['change'] > 0 else ''}{n(weight['change'], 1)})"
+            )
+        if summary["top_foods"]:
+            extra.append(
+                "Чаще всего: "
+                + ", ".join(f"{item['name']} ({item['count']})" for item in summary["top_foods"])
+            )
+        return (
+            f"## Статистика за {days} дн. ({start:%d.%m}–{self.today:%d.%m})\n"
+            + "\n".join(lines)
+            + "\n"
+            + "\n".join(extra)
+        )
+
     def section_message(self) -> str:
         hints = []
         if self.photos:
@@ -394,5 +510,5 @@ class Context:
         return f"## Новое сообщение пользователя{hint}\n<<<\n{text}\n>>>"
 
 
-def build(db: Session, user: User, message: ChatMessage) -> str:
-    return Context(db, user, message).build()
+def build(db: Session, user: User, message: ChatMessage, review_days: int | None = None) -> str:
+    return Context(db, user, message, review_days).build()

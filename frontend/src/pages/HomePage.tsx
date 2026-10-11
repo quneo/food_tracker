@@ -19,6 +19,7 @@ import { WeightSheet, weightChange } from '@/components/progress/WeightEditor'
 import { TelegramLinkButton } from '@/components/shared/TelegramLinkButton'
 import { addDays, dayLabel, formatDay, num, signed, timeOf, todayIn } from '@/lib/format'
 import { botLink } from '@/lib/telegram'
+import { cn } from '@/lib/utils'
 import breakfast from '@/assets/breakfast.webp'
 
 export default function HomePage() {
@@ -47,6 +48,9 @@ export default function HomePage() {
           <ThemeToggle />
         </span>
       </PageHeader>
+
+      {/* Phones: the first thing on the page; wide screens: in the side column. */}
+      {!user.telegram_id && <LinkTelegramCard className="mb-4 min-[1180px]:hidden" />}
 
       <div className="page-grid">
         <div className="flex min-w-0 flex-col gap-4">
@@ -135,7 +139,7 @@ export default function HomePage() {
         </div>
 
         <aside className="page-side" aria-label="Вес и бот">
-          {!user.telegram_id && <LinkTelegramCard />}
+          {!user.telegram_id && <LinkTelegramCard className="hidden min-[1180px]:flex" />}
           <WeightCard today={today} />
           {user.telegram_id && <BotCard />}
         </aside>
@@ -146,9 +150,9 @@ export default function HomePage() {
   )
 }
 
-function LinkTelegramCard() {
+function LinkTelegramCard({ className }: { className?: string }) {
   return (
-    <Card className="border-primary/30">
+    <Card className={cn('border-primary/30', className)}>
       <CardHeader>
         <CardTitle>Привяжите Telegram</CardTitle>
       </CardHeader>

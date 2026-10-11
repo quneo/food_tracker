@@ -17,6 +17,7 @@ from app.ai.models import MemoryFact
 from app.ai.schemas import (
     CreateMeal,
     DeleteMeal,
+    DeleteProduct,
     DeleteRecord,
     DeleteReminder,
     Forget,
@@ -24,6 +25,7 @@ from app.ai.schemas import (
     LogWeight,
     MealEstimate,
     Remember,
+    SaveProduct,
     SaveProgressPhoto,
     SetReminder,
     TurnResult,
@@ -38,9 +40,10 @@ from app.core.exceptions import DomainError
 from app.core.timeutil import local_today, parse_local, to_local, valid_zone, zone
 from app.database import utcnow
 from app.media.models import Media
+from app.nutrition import products as product_store
 from app.nutrition import service as nutrition
-from app.nutrition.models import Meal
-from app.nutrition.schemas import MealItemIn
+from app.nutrition.models import Meal, Product
+from app.nutrition.schemas import MealItemIn, ProductIn
 from app.progress import service as progress
 from app.progress.models import MEASUREMENTS, Measurement, ProgressPhoto, WeightEntry
 from app.reminders import service as reminders
@@ -92,6 +95,8 @@ class Executor:
             "update_profile": self.update_profile,
             "set_reminder": self.set_reminder,
             "delete_reminder": self.delete_reminder,
+            "save_product": self.save_product,
+            "delete_product": self.delete_product,
         }
         for action in result.actions[:12]:
             try:
@@ -132,21 +137,36 @@ class Executor:
             raise DomainError(f"не нашел {what} #{record_id}")
         return record
 
+    def product(self, product_id: int | None) -> Product | None:
+        if not product_id:
+            return None
+        product = self.db.get(Product, product_id)
+        return product if product and product.user_id == self.user.id else None
+
     def apply_estimate(self, meal: Meal, estimate: MealEstimate):
-        items = [
-            MealItemIn(
-                name=item.name.strip()[:200] or "Без названия",
-                grams=item.grams if item.grams and item.grams > 0 else None,
-                grams_source=item.grams_source,
-                kcal=item.kcal,
-                protein=item.protein,
-                fat=item.fat,
-                carbs=item.carbs,
-                confidence=item.confidence,
-                note=(item.note or "")[:300] or None,
+        items = []
+        for item in estimate.items:
+            grams = item.grams if item.grams and item.grams > 0 else None
+            values = {"kcal": item.kcal, "protein": item.protein, "fat": item.fat}
+            values["carbs"] = item.carbs
+            # A saved product: its label decides the numbers, the model only the amount.
+            product = self.product(item.product_id)
+            if product:
+                grams = grams or product.portion_grams or product.package_grams
+                if grams:
+                    values = product_store.scaled(product, grams)
+                product_store.used(product)
+            items.append(
+                MealItemIn(
+                    name=item.name.strip()[:200] or "Без названия",
+                    product_id=product.id if product else None,
+                    grams=grams,
+                    grams_source=item.grams_source,
+                    confidence=item.confidence,
+                    note=(item.note or "")[:300] or None,
+                    **values,
+                )
             )
-            for item in estimate.items
-        ]
         if not items:
             raise DomainError("в оценке нет ни одного продукта")
         meal.title = estimate.title.strip()[:200] or "Прием пищи"
@@ -166,6 +186,7 @@ class Executor:
         meal.kcal_low = round(min(low, meal.kcal))
         meal.kcal_high = round(max(high, meal.kcal))
         meal.assumptions = [text.strip()[:200] for text in estimate.assumptions if text.strip()][:8]
+        meal.ai_comment = (estimate.comment or "").strip()[:1500] or None
         meal.ai_model = self.model
 
     def describe_change(self, meal: Meal, estimate: MealEstimate) -> str:
@@ -396,6 +417,37 @@ class Executor:
             self.out.created.append(["reminder", reminder.id])
         self.out.notes.append(f"⏰ Напоминание: {reminders.describe(reminder)}")
 
+    def save_product(self, action: SaveProduct):
+        values = ProductIn(
+            name=action.name.strip()[:200],
+            brand=(action.brand or "").strip()[:120] or None,
+            kcal=action.kcal,
+            protein=action.protein,
+            fat=action.fat,
+            carbs=action.carbs,
+            portion_name=(action.portion_name or "").strip()[:60] or None,
+            portion_grams=action.portion_grams or None,
+            package_grams=action.package_grams or None,
+            comment=(action.comment or "").strip()[:1000] or None,
+        ).model_dump()
+        if action.product_id:
+            product = self.owned(Product, action.product_id, "продукт")
+        else:
+            product = product_store.by_name(self.db, self.user.id, values["name"])
+        created = product is None
+        product = product_store.save(self.db, self.user.id, values, product)
+        if action.use_photos and self.photos:
+            product_store.attach(self.db, product, self.photos)
+            self.photos = []
+        verb = "Сохранил продукт" if created else "Обновил продукт"
+        self.out.notes.append(f"🏷 {verb} {product_store.describe(product)}")
+        if created:
+            self.out.created.append(["product", product.id])
+
+    def delete_product(self, action: DeleteProduct):
+        product = self.owned(Product, action.product_id, "продукт")
+        self.ask("delete_product", {"product_id": product.id}, f"Удалить продукт «{product.name}»?")
+
     def delete_reminder(self, action: DeleteReminder):
         reminder = self.owned(Reminder, action.reminder_id, "напоминание")
         self.out.notes.append(f"🔕 Удалил напоминание: {reminders.describe(reminder)}")
@@ -405,6 +457,7 @@ class Executor:
 # Pending actions and undo (run when the person presses a button)
 
 UNDO_MODELS = {
+    "product": Product,
     "weight": WeightEntry,
     "measurement": Measurement,
     "progress_photo": ProgressPhoto,
@@ -429,6 +482,12 @@ def execute_pending(db: Session, user: User, action: PendingAction) -> str:
             raise DomainError("Запись уже удалена")
         nutrition.delete(db, meal)
         return f"🗑 Удалено: «{meal.title}»"
+    if action.kind == "delete_product":
+        product = db.get(Product, payload["product_id"])
+        if not product or product.user_id != user.id:
+            raise DomainError("Продукт уже удален")
+        product_store.delete(db, product)
+        return f"🗑 Продукт «{product.name}» удален"
     if action.kind == "update_weight":
         entry = db.get(WeightEntry, payload["weight_id"])
         if not entry or entry.user_id != user.id:
@@ -453,6 +512,8 @@ def execute_pending(db: Session, user: User, action: PendingAction) -> str:
                 continue
             if isinstance(record, ProgressPhoto):
                 progress.delete_photo(db, record)
+            elif isinstance(record, Product):
+                product_store.delete(db, record)
             else:
                 db.delete(record)
             removed += 1

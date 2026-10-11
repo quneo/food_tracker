@@ -78,6 +78,12 @@ export function MealCard({ meal, onOpen }: { meal: Meal; onOpen: (id: number) =>
               ))}
             </span>
           )}
+          {meal.ai_comment && (
+            <span className="mt-2.5 block rounded-r-[10px] border-l-[3px] border-primary bg-accent/60 py-1.5 pr-2.5 pl-2.5 text-sm leading-snug">
+              <span className="block text-xs font-medium text-accent-foreground">Ассистент</span>
+              {meal.ai_comment}
+            </span>
+          )}
           {(draft || meal.estimated_by === 'ai') && (
             <span className="mt-2.5 flex flex-wrap items-center gap-2">
               {draft && <DraftBadge />}

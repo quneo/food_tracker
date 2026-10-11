@@ -38,6 +38,7 @@ def meal_out(meal: Meal, user: User) -> dict:
         "kcal_low": meal.kcal_low,
         "kcal_high": meal.kcal_high,
         "assumptions": meal.assumptions or [],
+        "ai_comment": meal.ai_comment,
         "items": meal.items,
         "photos": meal.photos,
         "created_at": to_local(meal.created_at, tz).isoformat(timespec="minutes"),
@@ -101,6 +102,17 @@ def set_time(meal: Meal, user: User, local: datetime | None):
     meal.eaten_on = local_day(meal.eaten_at, tz)
 
 
+def own_products(db: Session, user_id: int, items: list) -> list:
+    """Drops links to products that are not the person's own."""
+    from app.nutrition.products import owned_ids
+
+    mine = owned_ids(db, user_id, {item.product_id for item in items if item.product_id})
+    for item in items:
+        if item.product_id not in mine:
+            item.product_id = None
+    return items
+
+
 def set_items(meal: Meal, items: list) -> None:
     meal.items = [
         MealItem(position=position, **item.model_dump()) for position, item in enumerate(items)
@@ -128,7 +140,7 @@ def create(
     )
     set_time(meal, user, data.eaten_at)
     meal.meal_type = data.meal_type or guess_meal_type(to_local(meal.eaten_at, tz_of(user)))
-    set_items(meal, data.items)
+    set_items(meal, own_products(db, user.id, data.items))
     if status == "confirmed":
         meal.confirmed_at = utcnow()
     db.add(meal)
@@ -147,7 +159,7 @@ def update(db: Session, user: User, meal: Meal, data: MealPatch) -> Meal:
     if "eaten_at" in fields and data.eaten_at:
         set_time(meal, user, data.eaten_at)
     if "items" in fields and data.items:
-        set_items(meal, data.items)
+        set_items(meal, own_products(db, user.id, data.items))
         # The person changed the numbers: the result is theirs, not a guess anymore.
         meal.estimated_by = "user"
         meal.confidence = None

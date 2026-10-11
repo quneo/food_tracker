@@ -18,6 +18,7 @@ ALBUM_WAIT = 1.2  # seconds to collect the photos of one album
 MAX_PHOTOS = 6
 COMMANDS = [
     BotCommand(command="today", description="Итоги дня"),
+    BotCommand(command="review", description="Разбор рациона"),
     BotCommand(command="progress", description="Сохранить фото прогресса"),
     BotCommand(command="new", description="Начать новый разговор"),
     BotCommand(command="app", description="Дневник на сайте"),
@@ -74,6 +75,11 @@ async def help_(message: Message, bot: Bot):
 @router.message(Command("today"))
 async def today(message: Message, bot: Bot):
     await reply(message, bot, backend.call, "GET", "bot/today", message.from_user.id)
+
+
+@router.message(Command("review"))
+async def review(message: Message, bot: Bot):
+    await reply(message, bot, backend.call, "GET", "bot/review", message.from_user.id)
 
 
 @router.message(Command("new"))
@@ -188,8 +194,12 @@ async def other(message: Message, bot: Bot):
 @router.callback_query(F.data)
 async def press(callback: CallbackQuery, bot: Bot):
     try:
+        message_id = callback.message.message_id if callback.message else None
         result = await backend.call(
-            "POST", "bot/press", callback.from_user.id, json={"data": callback.data}
+            "POST",
+            "bot/press",
+            callback.from_user.id,
+            json={"data": callback.data, "message_id": message_id},
         )
     except ApiError as error:
         await callback.answer(str(error)[:200], show_alert=True)

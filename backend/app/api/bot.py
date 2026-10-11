@@ -29,6 +29,8 @@ class StartIn(BaseModel):
 
 class PressIn(BaseModel):
     data: str = Field(max_length=64)
+    # The message with the button: a started job's answer replaces it.
+    message_id: int | None = None
 
 
 class SentIn(BaseModel):
@@ -83,7 +85,15 @@ def link(data: LinkIn, db: Db):
 
 @router.post("/press")
 def press(data: PressIn, user: BotUser, db: Db):
-    return service.press(db, user, data.data)
+    result = service.press(db, user, data.data, data.message_id)
+    if result.get("job_id"):
+        worker.wake()
+    return result
+
+
+@router.get("/review")
+def review_menu(user: BotUser):
+    return {"view": service.review_menu()}
 
 
 @router.get("/today")

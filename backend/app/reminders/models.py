@@ -5,13 +5,16 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base, utcnow
 
-REMINDER_KINDS = ("meal", "weight", "photo", "custom")
+# "review": instead of a message the assistant writes a review of the recent days.
+REMINDER_KINDS = ("meal", "weight", "photo", "review", "custom")
 
 
 class Reminder(Base):
     __tablename__ = "reminders"
     __table_args__ = (
-        CheckConstraint("kind IN ('meal', 'weight', 'photo', 'custom')"),
+        CheckConstraint(
+            "kind IN ('meal', 'weight', 'photo', 'review', 'custom')", name="ck_reminders_kind"
+        ),
         Index("ix_reminders_due", "enabled", "next_run_at"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)

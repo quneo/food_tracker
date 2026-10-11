@@ -14,6 +14,7 @@ export const keys = {
   suggested: ['suggested-targets'] as const,
   reminders: ['reminders'] as const,
   memory: ['memory'] as const,
+  products: ['products'] as const,
   chat: ['chat'] as const,
   admin: ['admin'] as const,
 }

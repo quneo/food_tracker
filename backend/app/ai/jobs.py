@@ -134,7 +134,11 @@ class Worker:
                     pictures.append(images.for_ai(storage.get(photo.object_key)))
                 except StorageError:
                     log.warning("photo %s unavailable for job %s", photo.id, job_id)
-            prompt = prompts.assemble(context.build(db, user, message))
+            review = job.kind == "review"
+            prompt = prompts.assemble(
+                context.build(db, user, message, job.days if review else None),
+                "review" if review else "turn",
+            )
             db.commit()  # memory facts' last_used_at
             return prompt, pictures
 
@@ -155,7 +159,7 @@ class Worker:
             focus = state.focus_meal_id if state else None
             outcome = Executor(db, user, list(photos), answer.model, focus).run(result)
 
-            reply = reply_html(result.reply[:3000])
+            reply = reply_html(result.reply[: 3600 if job.kind == "review" else 3000])
             notes = "\n".join(html.escape(note) for note in outcome.notes)
             text = "\n\n".join(part for part in (reply, notes) if part) or "Готово."
             db.add(

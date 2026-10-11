@@ -68,6 +68,8 @@ export type MealStatus = 'draft' | 'confirmed'
 export interface MealItem {
   id: number
   name: string
+  /** A saved product the numbers came from. */
+  product_id: number | null
   grams: number | null
   grams_source: GramsSource
   kcal: number
@@ -80,6 +82,7 @@ export interface MealItem {
 
 export interface MealItemIn {
   name: string
+  product_id?: number | null
   grams: number | null
   grams_source: GramsSource
   kcal: number
@@ -114,6 +117,8 @@ export interface Meal {
   kcal_low: number | null
   kcal_high: number | null
   assumptions: string[]
+  /** The assistant's remark about the meal. */
+  ai_comment: string | null
   items: MealItem[]
   photos: MealPhoto[]
   created_at: string
@@ -280,7 +285,28 @@ export interface SuggestedTargets {
   tdee: number
 }
 
-export type ReminderKind = 'meal' | 'weight' | 'photo' | 'custom'
+export type ReminderKind = 'meal' | 'weight' | 'photo' | 'review' | 'custom'
+
+/** A saved product with numbers from its label, per 100 g (or 100 ml). */
+export interface Product {
+  id: number
+  name: string
+  brand: string | null
+  kcal: number
+  protein: number
+  fat: number
+  carbs: number
+  portion_name: string | null
+  portion_grams: number | null
+  package_grams: number | null
+  comment: string | null
+  uses: number
+  last_used_at: string | null
+  created_at: string
+  photos: MealPhoto[]
+}
+
+export type ProductIn = Omit<Product, 'id' | 'uses' | 'last_used_at' | 'created_at' | 'photos'>
 
 export interface Reminder {
   id: number

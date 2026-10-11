@@ -39,11 +39,13 @@ HELP = (
     "🍽 <b>Еда.</b> Пришлите фото тарелки или напишите, что съели: "
     "<i>«овсянка 60 г на молоке и банан»</i>. Я посчитаю КБЖУ и покажу черновик — "
     "нажмите «Сохранить» или напишите, что поправить: <i>«риса было 200 г»</i>.\n\n"
+    "🏷 <b>Свои продукты.</b> Пришлите фото этикетки с подписью <i>«запомни мое молоко»</i> — "
+    "сохраню КБЖУ и фото состава, потом <i>«стакан моего молока»</i> посчитаю точно.\n\n"
     "⚖️ <b>Вес и замеры.</b> Просто числом: <i>«вес 82.4»</i>, <i>«талия 80»</i>.\n\n"
     "📸 <b>Фото тела.</b> Подпишите фото словом «прогресс» или нажмите /progress перед "
     "отправкой. Остальные фото я считаю едой.\n\n"
-    "💬 <b>Вопросы.</b> <i>«сколько белка за неделю?»</i>, <i>«что съесть на ужин?»</i>, "
-    "<i>«напоминай взвешиваться в 8»</i>.\n\n"
+    "💬 <b>Вопросы и разбор.</b> <i>«сколько белка за неделю?»</i>, <i>«что съесть на "
+    "ужин?»</i>. /review — разбор рациона за день, неделю или месяц.\n\n"
     "/today — итоги дня · /new — новый разговор"
 )
 
@@ -256,20 +258,65 @@ def _meal_view(db: Session, user: User, meal: Meal, deleting: bool = False) -> d
     )
 
 
-def press(db: Session, user: User, data: str) -> dict:
-    """-> {"view": message replacement or None, "toast": short note, "message": new message}"""
+def press(db: Session, user: User, data: str, message_id: int | None = None) -> dict:
+    """-> {"view": message replacement or None, "toast": short note, "message": new message,
+    "job_id": a started assistant job}"""
     parts = data.split(":")
     try:
-        return _press(db, user, parts)
+        return _press(db, user, parts, message_id)
     except DomainError as error:
-        return {"view": None, "toast": error.message, "message": None}
+        return {"view": None, "toast": error.message, "message": None, "job_id": None}
     except (ValueError, IndexError):
-        return {"view": None, "toast": "Кнопка устарела", "message": None}
+        return {"view": None, "toast": "Кнопка устарела", "message": None, "job_id": None}
 
 
-def _press(db: Session, user: User, parts: list[str]) -> dict:
+# Reviews of the recent days
+
+REVIEW_PERIODS = {1: "сегодня", 7: "неделю", 14: "две недели", 30: "месяц"}
+
+
+def review_menu() -> dict:
+    labels = {1: "Сегодня", 7: "Неделя", 14: "2 недели", 30: "Месяц"}
+    return view(
+        "📊 <b>Разбор рациона</b>\n\nЗа какой период? Посмотрю, что получается хорошо и что "
+        "можно улучшить.",
+        [[views.button(labels[days], f"rv:{days}") for days in REVIEW_PERIODS]],
+    )
+
+
+def start_review(db: Session, user: User, days: int, status_message_id: int | None = None) -> AiJob:
+    """Queues the assistant's review of the last `days` days (from a button or a reminder)."""
+    if days not in REVIEW_PERIODS:
+        raise DomainError("Такого периода нет")
+    if get_settings().ai_runner == "off":
+        raise DomainError(ERRORS["off"])
+    message = ChatMessage(
+        user_id=user.id, role="user", text=f"Разбор рациона за {REVIEW_PERIODS[days]}"
+    )
+    db.add(message)
+    db.flush()
+    job = AiJob(
+        user_id=user.id,
+        message_id=message.id,
+        kind="review",
+        days=days,
+        status_message_id=status_message_id,
+    )
+    db.add(job)
+    db.flush()
+    return job
+
+
+def _press(db: Session, user: User, parts: list[str], message_id: int | None) -> dict:
     head = parts[0]
-    result = {"view": None, "toast": None, "message": None}
+    result = {"view": None, "toast": None, "message": None, "job_id": None}
+    if head == "rv":
+        days = int(parts[1])
+        job = start_review(db, user, days, message_id)
+        db.commit()
+        result["job_id"] = job.id
+        result["view"] = view(f"⏳ Разбираю рацион за {REVIEW_PERIODS[days]}…")
+        return result
     if head == "m":
         action, meal = parts[1], _meal(db, user, parts[2])
         if action == "ok":

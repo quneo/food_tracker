@@ -13,7 +13,9 @@ import { MealCard } from '@/components/meals/MealCard'
 import { MacroLine } from '@/components/meals/MealBits'
 import { NewMealSheet } from '@/components/meals/NewMealSheet'
 import { useMealParam } from '@/components/meals/MealSheet'
+import { ProductsView } from '@/components/products/ProductsView'
 import { MEAL_TYPES } from '@/lib/labels'
+import { cn } from '@/lib/utils'
 import { addDays, dayLabel, num, rangeLabel, todayIn } from '@/lib/format'
 import type { Meal, MealStatus, MealType } from '@/types'
 
@@ -40,6 +42,7 @@ export default function DiaryPage() {
     ? (params.get('type') as MealType)
     : null
   const status: MealStatus | null = params.get('status') === 'draft' ? 'draft' : null
+  const products = params.get('tab') === 'products'
   // Without a chosen period the feed goes back week by week, up to a year before sign-up.
   const floor = from ?? addDays(user.created_at.slice(0, 10), -365)
 
@@ -77,118 +80,151 @@ export default function DiaryPage() {
   return (
     <>
       <PageHeader title="Дневник">
-        <Button
-          onClick={() => setAdding(true)}
-          className="max-sm:w-11 max-sm:px-0"
-          aria-label="Добавить запись"
-        >
-          <Plus />
-          <span className="max-sm:sr-only">Добавить</span>
-        </Button>
+        {!products && (
+          <Button
+            onClick={() => setAdding(true)}
+            className="max-sm:w-11 max-sm:px-0"
+            aria-label="Добавить запись"
+          >
+            <Plus />
+            <span className="max-sm:sr-only">Добавить</span>
+          </Button>
+        )}
       </PageHeader>
 
-      <div className="page-grid">
-        <div className="chat-column">
-          {feed.isPending ? (
-            <BlockSkeleton rows={4} />
-          ) : feed.isError ? (
-            <ErrorState error={feed.error} retry={() => feed.refetch()} />
-          ) : (
-            <>
-              {!anyMeals && !feed.hasNextPage && (
-                <EmptyState
-                  icon={NotebookText}
-                  title={filtered ? 'Ничего не нашлось' : 'Записей пока нет'}
-                  description={
-                    filtered
-                      ? 'Попробуйте другой период или уберите фильтры.'
-                      : 'Пришлите боту фото или описание еды, либо добавьте запись вручную.'
-                  }
-                />
-              )}
-              {pages.map((page) => (
-                <PageDays key={page.end} page={page} today={today} onOpen={open} />
-              ))}
-              {feed.hasNextPage && (
-                <Button
-                  variant="outline"
-                  className="self-center rounded-full"
-                  onClick={() => feed.fetchNextPage()}
-                  disabled={feed.isFetchingNextPage}
-                >
-                  <ChevronDown />
-                  {feed.isFetchingNextPage
-                    ? 'Загружаем…'
-                    : `Показать раньше: ${rangeLabel(
-                        addDays(pages[pages.length - 1].start, -7) < floor
-                          ? floor
-                          : addDays(pages[pages.length - 1].start, -7),
-                        addDays(pages[pages.length - 1].start, -1),
-                      )}`}
-                </Button>
-              )}
-            </>
-          )}
-        </div>
-        <aside className="page-side diary-side" aria-label="Фильтры">
-          <div
-            className="glass flex flex-col gap-3 rounded-[24px] p-4"
-            role="group"
-            aria-label="Фильтры"
+      <div
+        className="mb-4 inline-flex rounded-[16px] glass p-1"
+        role="tablist"
+        aria-label="Раздел дневника"
+      >
+        {[
+          { value: null, label: 'Лента' },
+          { value: 'products', label: 'Мои продукты' },
+        ].map((tab) => (
+          <button
+            key={tab.label}
+            type="button"
+            role="tab"
+            aria-selected={(tab.value === 'products') === products}
+            onClick={() => update({ tab: tab.value })}
+            className={cn(
+              'min-h-10 rounded-[12px] px-4 text-sm font-medium transition-colors',
+              (tab.value === 'products') === products
+                ? 'bg-card text-foreground shadow-sm dark:bg-white/10'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
           >
-            <p className="section-title hidden min-[1180px]:block">Показать</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <DateRangePicker
-                from={from ?? undefined}
-                to={to ?? undefined}
-                today={today}
-                onChange={(start, end) => update({ from: start, to: end })}
-                label={from && to ? rangeLabel(from, to) : 'Все даты'}
-                className="rounded-full"
-              />
-              {from && (
-                <Button
-                  variant="ghost"
-                  className="rounded-full text-muted-foreground"
-                  onClick={() => update({ from: null, to: null })}
-                >
-                  <X />
-                  Сбросить период
-                </Button>
-              )}
-            </div>
-            <div className="chips">
-              <button
-                type="button"
-                className="chip"
-                aria-pressed={!type}
-                onClick={() => update({ type: null })}
-              >
-                Все
-              </button>
-              {MEAL_TYPES.map((item) => (
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {products ? (
+        <ProductsView />
+      ) : (
+        <div className="page-grid">
+          <div className="chat-column">
+            {feed.isPending ? (
+              <BlockSkeleton rows={4} />
+            ) : feed.isError ? (
+              <ErrorState error={feed.error} retry={() => feed.refetch()} />
+            ) : (
+              <>
+                {!anyMeals && !feed.hasNextPage && (
+                  <EmptyState
+                    icon={NotebookText}
+                    title={filtered ? 'Ничего не нашлось' : 'Записей пока нет'}
+                    description={
+                      filtered
+                        ? 'Попробуйте другой период или уберите фильтры.'
+                        : 'Пришлите боту фото или описание еды, либо добавьте запись вручную.'
+                    }
+                  />
+                )}
+                {pages.map((page) => (
+                  <PageDays key={page.end} page={page} today={today} onOpen={open} />
+                ))}
+                {feed.hasNextPage && (
+                  <Button
+                    variant="outline"
+                    className="self-center rounded-full"
+                    onClick={() => feed.fetchNextPage()}
+                    disabled={feed.isFetchingNextPage}
+                  >
+                    <ChevronDown />
+                    {feed.isFetchingNextPage
+                      ? 'Загружаем…'
+                      : `Показать раньше: ${rangeLabel(
+                          addDays(pages[pages.length - 1].start, -7) < floor
+                            ? floor
+                            : addDays(pages[pages.length - 1].start, -7),
+                          addDays(pages[pages.length - 1].start, -1),
+                        )}`}
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
+          <aside className="page-side diary-side" aria-label="Фильтры">
+            <div
+              className="glass flex flex-col gap-3 rounded-[24px] p-4"
+              role="group"
+              aria-label="Фильтры"
+            >
+              <p className="section-title hidden min-[1180px]:block">Показать</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <DateRangePicker
+                  from={from ?? undefined}
+                  to={to ?? undefined}
+                  today={today}
+                  onChange={(start, end) => update({ from: start, to: end })}
+                  label={from && to ? rangeLabel(from, to) : 'Все даты'}
+                  className="rounded-full"
+                />
+                {from && (
+                  <Button
+                    variant="ghost"
+                    className="rounded-full text-muted-foreground"
+                    onClick={() => update({ from: null, to: null })}
+                  >
+                    <X />
+                    Сбросить период
+                  </Button>
+                )}
+              </div>
+              <div className="chips">
                 <button
-                  key={item.value}
                   type="button"
                   className="chip"
-                  aria-pressed={type === item.value}
-                  onClick={() => update({ type: type === item.value ? null : item.value })}
+                  aria-pressed={!type}
+                  onClick={() => update({ type: null })}
                 >
-                  {item.label}
+                  Все
                 </button>
-              ))}
-              <button
-                type="button"
-                className="chip"
-                aria-pressed={status === 'draft'}
-                onClick={() => update({ status: status ? null : 'draft' })}
-              >
-                Черновики
-              </button>
+                {MEAL_TYPES.map((item) => (
+                  <button
+                    key={item.value}
+                    type="button"
+                    className="chip"
+                    aria-pressed={type === item.value}
+                    onClick={() => update({ type: type === item.value ? null : item.value })}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="chip"
+                  aria-pressed={status === 'draft'}
+                  onClick={() => update({ status: status ? null : 'draft' })}
+                >
+                  Черновики
+                </button>
+              </div>
             </div>
-          </div>
-        </aside>
-      </div>
+          </aside>
+        </div>
+      )}
 
       <NewMealSheet open={adding} onOpenChange={setAdding} />
     </>

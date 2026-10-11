@@ -21,7 +21,12 @@ TEXTS = {
     "weight": "⚖️ Время взвеситься. Пришлите вес, например: 82.4",
     "photo": "📸 Пора сделать фото прогресса. Пришлите фото с подписью «прогресс».",
 }
-KIND_NAMES = {"meal": "Записать питание", "weight": "Взвеситься", "photo": "Фото прогресса"}
+KIND_NAMES = {
+    "meal": "Записать питание",
+    "weight": "Взвеситься",
+    "photo": "Фото прогресса",
+    "review": "Разбор рациона",
+}
 
 
 def default_reminders(user) -> list[Reminder]:
@@ -30,6 +35,7 @@ def default_reminders(user) -> list[Reminder]:
         ("weight", "08:00", [1, 2, 3, 4, 5, 6, 7]),
         ("meal", "21:00", [1, 2, 3, 4, 5, 6, 7]),
         ("photo", "10:00", [7]),
+        ("review", "20:00", [7]),
     ]
     return [
         Reminder(user_id=user.id, kind=kind, time=at, days=days, enabled=False)
@@ -120,6 +126,17 @@ def _already_done(db: Session, reminder: Reminder, tz_name: str) -> bool:
     return False
 
 
+def _start_review(db: Session, user) -> bool:
+    from app.chat.service import start_review
+
+    try:
+        start_review(db, user, 7)
+    except DomainError as error:
+        log.info("weekly review for user %s skipped: %s", user.id, error.message)
+        return False
+    return True
+
+
 def send_due(db: Session) -> int:
     """Queues every reminder whose time has come and moves it to its next time."""
     from app.users.models import User
@@ -136,6 +153,11 @@ def send_due(db: Session) -> int:
         if fresh and user.can_enter and user.telegram_id:
             if reminder.smart_skip and _already_done(db, reminder, tz_name):
                 log.info("reminder %s skipped: already done", reminder.id)
+            elif reminder.kind == "review":
+                # Not a message: the assistant writes a review of the week.
+                if _start_review(db, user):
+                    reminder.last_sent_at = now
+                    sent += 1
             else:
                 buttons = [[{"text": "🔕 Больше не напоминать", "data": f"r:off:{reminder.id}"}]]
                 outbox.push(db, user, text(reminder), buttons)

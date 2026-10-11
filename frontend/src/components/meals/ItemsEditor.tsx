@@ -9,6 +9,7 @@ import type { Confidence, GramsSource, MealItem, MealItemIn } from '@/types'
 export interface ItemDraft {
   key: string
   name: string
+  product_id: number | null
   grams: string
   grams_source: GramsSource
   kcal: string
@@ -25,6 +26,7 @@ const nextKey = () => `item-${++counter}`
 export const emptyItem = (): ItemDraft => ({
   key: nextKey(),
   name: '',
+  product_id: null,
   grams: '',
   grams_source: 'stated',
   kcal: '',
@@ -38,6 +40,7 @@ export const emptyItem = (): ItemDraft => ({
 export const itemDraft = (item: MealItem): ItemDraft => ({
   key: nextKey(),
   name: item.name,
+  product_id: item.product_id,
   grams: inputNumber(item.grams),
   grams_source: item.grams_source,
   kcal: inputNumber(item.kcal),
@@ -74,6 +77,7 @@ export function toItems(drafts: ItemDraft[]): MealItemIn[] | string {
     if (values.grams === 0) return `${where}: вес больше нуля или пусто`
     items.push({
       name: draft.name.trim(),
+      product_id: draft.product_id,
       grams: values.grams,
       grams_source: draft.grams_source,
       kcal: values.kcal,

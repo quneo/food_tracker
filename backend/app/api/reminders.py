@@ -14,7 +14,7 @@ router = APIRouter(prefix="/reminders", tags=["reminders"])
 
 
 class ReminderIn(BaseModel):
-    kind: Literal["meal", "weight", "photo", "custom"]
+    kind: Literal["meal", "weight", "photo", "review", "custom"]
     time: str = Field(pattern=r"^\d{2}:\d{2}$")
     days: list[int] = Field(min_length=1, max_length=7)
     text: str | None = Field(default=None, max_length=300)

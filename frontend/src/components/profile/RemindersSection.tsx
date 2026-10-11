@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   BellRing,
+  ChartColumnBig,
   Camera,
   MessageSquareText,
   Pencil,
@@ -38,6 +39,7 @@ const ICONS: Record<ReminderKind, typeof BellRing> = {
   meal: Utensils,
   weight: Scale,
   photo: Camera,
+  review: ChartColumnBig,
   custom: MessageSquareText,
 }
 

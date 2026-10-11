@@ -10,6 +10,7 @@ GramsSource = Literal["estimated", "stated", "label"]
 
 class MealItemIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
+    product_id: int | None = None
     grams: float | None = Field(default=None, gt=0, le=5000)
     grams_source: GramsSource = "stated"
     kcal: float = Field(ge=0, le=10000)
@@ -41,6 +42,7 @@ class MealItemOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     name: str
+    product_id: int | None
     grams: float | None
     grams_source: GramsSource
     kcal: float
@@ -76,9 +78,56 @@ class MealOut(BaseModel):
     kcal_low: float | None
     kcal_high: float | None
     assumptions: list[str]
+    ai_comment: str | None
     items: list[MealItemOut]
     photos: list[PhotoOut]
     created_at: str
+
+
+class ProductIn(BaseModel):
+    """Values per 100 g (or 100 ml), as on the label."""
+
+    name: str = Field(min_length=1, max_length=200)
+    brand: str | None = Field(default=None, max_length=120)
+    kcal: float = Field(ge=0, le=900)
+    protein: float = Field(default=0, ge=0, le=100)
+    fat: float = Field(default=0, ge=0, le=100)
+    carbs: float = Field(default=0, ge=0, le=100)
+    portion_name: str | None = Field(default=None, max_length=60)
+    portion_grams: float | None = Field(default=None, gt=0, le=5000)
+    package_grams: float | None = Field(default=None, gt=0, le=20000)
+    comment: str | None = Field(default=None, max_length=1000)
+
+
+class ProductPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    brand: str | None = Field(default=None, max_length=120)
+    kcal: float | None = Field(default=None, ge=0, le=900)
+    protein: float | None = Field(default=None, ge=0, le=100)
+    fat: float | None = Field(default=None, ge=0, le=100)
+    carbs: float | None = Field(default=None, ge=0, le=100)
+    portion_name: str | None = Field(default=None, max_length=60)
+    portion_grams: float | None = Field(default=None, gt=0, le=5000)
+    package_grams: float | None = Field(default=None, gt=0, le=20000)
+    comment: str | None = Field(default=None, max_length=1000)
+
+
+class ProductOut(BaseModel):
+    id: int
+    name: str
+    brand: str | None
+    kcal: float
+    protein: float
+    fat: float
+    carbs: float
+    portion_name: str | None
+    portion_grams: float | None
+    package_grams: float | None
+    comment: str | None
+    uses: int
+    last_used_at: str | None
+    created_at: str
+    photos: list[PhotoOut]
 
 
 class Totals(BaseModel):

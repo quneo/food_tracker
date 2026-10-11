@@ -9,11 +9,14 @@ from app.database import Base, utcnow
 class Media(Base):
     """A photo in object storage: the original as uploaded plus a small WebP preview.
 
-    kind: "chat" until the assistant decides what the photo is, then "meal" or "body".
+    kind: "chat" until the assistant decides what the photo is, then "meal", "body" or
+    "product" (a label of a saved product).
     """
 
     __tablename__ = "media"
-    __table_args__ = (CheckConstraint("kind IN ('chat', 'meal', 'body')"),)
+    __table_args__ = (
+        CheckConstraint("kind IN ('chat', 'meal', 'body', 'product')", name="ck_media_kind"),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     kind: Mapped[str] = mapped_column(String(8))
@@ -25,6 +28,9 @@ class Media(Base):
     height: Mapped[int]
     meal_id: Mapped[int | None] = mapped_column(
         ForeignKey("meals.id", ondelete="SET NULL"), index=True
+    )
+    product_id: Mapped[int | None] = mapped_column(
+        ForeignKey("products.id", ondelete="SET NULL"), index=True
     )
     message_id: Mapped[int | None] = mapped_column(
         ForeignKey("chat_messages.id", ondelete="SET NULL"), index=True

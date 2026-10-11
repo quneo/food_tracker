@@ -84,6 +84,8 @@ def meal_text(meal: Meal, tz_name: str, day_total: dict | None = None, target=No
         lines.append(
             f"• {escape(item.name)}{', ' + weight if weight else ''} — {n(item.kcal)} ккал"
         )
+    if meal.ai_comment:
+        lines += ["", f"💬 {escape(meal.ai_comment)}"]
     if meal.assumptions:
         lines += ["", "<i>Допущения: " + escape("; ".join(meal.assumptions)) + "</i>"]
     if meal.estimated_by == "ai" and meal.confidence:

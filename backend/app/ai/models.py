@@ -51,6 +51,9 @@ class AiJob(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     message_id: Mapped[int] = mapped_column(ForeignKey("chat_messages.id", ondelete="CASCADE"))
     status: Mapped[str] = mapped_column(String(16), default="queued")
+    # "turn": answer a message; "review": a review of the last `days` days.
+    kind: Mapped[str] = mapped_column(String(8), default="turn", server_default="turn")
+    days: Mapped[int | None]
     attempts: Mapped[int] = mapped_column(default=0)
     # The bot's "thinking…" message that the answer replaces.
     status_message_id: Mapped[int | None] = mapped_column(BigInteger)

@@ -15,6 +15,7 @@ from app.chat.models import OutboxMessage
 def item(name, grams, kcal, protein=0, fat=0, carbs=0, source="estimated"):
     return {
         "name": name,
+        "product_id": None,
         "grams": grams,
         "grams_source": source,
         "kcal": kcal,
@@ -37,6 +38,7 @@ def estimate(title, items, low=None, high=None):
         "kcal_high": high or total * 1.3,
         "confidence": "medium",
         "assumptions": ["Масло при жарке ~10 г"],
+        "comment": None,
     }
 
 

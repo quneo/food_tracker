@@ -30,6 +30,8 @@ import type {
   TelegramLink,
   Weight,
   WeightIn,
+  Product,
+  ProductIn,
 } from '@/types'
 
 type Signal = { signal?: AbortSignal }
@@ -73,6 +75,22 @@ export const mealsApi = {
   },
   removePhoto: (id: number, mediaId: number) =>
     api<Meal>(`/meals/${id}/photos/${mediaId}`, { method: 'DELETE' }),
+}
+
+export const productsApi = {
+  list: (q: string | null, { signal }: Signal = {}) =>
+    api<Product[]>(`/products${query({ q })}`, { signal }),
+  create: (data: ProductIn) => api<Product>('/products', json('POST', data)),
+  update: (id: number, data: Partial<ProductIn>) =>
+    api<Product>(`/products/${id}`, json('PATCH', data)),
+  remove: (id: number) => api<void>(`/products/${id}`, { method: 'DELETE' }),
+  addPhoto: (id: number, file: File) => {
+    const form = new FormData()
+    form.append('photo', file)
+    return api<Product>(`/products/${id}/photos`, { method: 'POST', body: form })
+  },
+  removePhoto: (id: number, mediaId: number) =>
+    api<Product>(`/products/${id}/photos/${mediaId}`, { method: 'DELETE' }),
 }
 
 export const analyticsApi = {
