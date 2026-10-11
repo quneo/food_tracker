@@ -1,0 +1,91 @@
+name: food-tracker
+
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: sqlite:////data/food.db
+      S3_ENDPOINT: minio:9000
+    volumes:
+      - ${DATA_DIR:-./.local/data}:/data
+      # SSH key and known_hosts for the Codex runner on the VPS (owner uid 10001, mode 600).
+      - ${CODEX_SSH_DIR:-./.local/codex-ssh}:/run/codex-ssh:ro
+    depends_on:
+      - minio
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_BIND:-127.0.0.1}:${FRONTEND_PORT:-8090}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  bot:
+    build: ./bot
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      BACKEND_URL: http://backend:8000/api
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  minio:
+    # Community build of MinIO (upstream stopped publishing images in 2025).
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    restart: unless-stopped
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+      MINIO_BROWSER: "off"
+    volumes:
+      - ${MINIO_DIR:-./.local/minio}:/data
+
+  # Telegram through an SSH tunnel (SOCKS5) to a host that can reach it.
+  # Enable with --profile tg-proxy and TELEGRAM_PROXY=socks5://tg-proxy:1080.
+  tg-proxy:
+    profiles: ["tg-proxy"]
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM alpine:3.22
+        RUN apk add --no-cache openssh-client && adduser -D -u 10001 tunnel
+        USER tunnel
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    command:
+      - ssh
+      - -N
+      - -D
+      - 0.0.0.0:1080
+      - -i
+      - /keys/id_ed25519
+      - -o
+      - IdentitiesOnly=yes
+      - -o
+      - BatchMode=yes
+      - -o
+      - UserKnownHostsFile=/keys/known_hosts
+      - -o
+      - StrictHostKeyChecking=yes
+      - -o
+      - ExitOnForwardFailure=yes
+      - -o
+      - ServerAliveInterval=30
+      - -o
+      - ServerAliveCountMax=3
+      - ${TG_PROXY_SSH_TARGET:-tgproxy@vps.example}
+    volumes:
+      - ${TG_PROXY_SSH_DIR:-./.local/tg-proxy}:/keys:ro

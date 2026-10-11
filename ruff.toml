@@ -1,0 +1,12 @@
+target-version = "py313"
+line-length = 100
+
+[lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
+ignore = ["B008"]
+
+[lint.isort]
+known-first-party = ["app"]
+
+[lint.per-file-ignores]
+"*/tests/conftest.py" = ["E402", "I001"]

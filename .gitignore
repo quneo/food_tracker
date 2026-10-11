@@ -1,0 +1,15 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+*.db
+*.db-*
+*.egg-info/
+node_modules/
+dist/
+*.tsbuildinfo
+.pnpm-store/
+.local/
+secrets/
