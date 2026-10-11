@@ -255,6 +255,24 @@ def test_fast_paths_skip_the_assistant(person, runner, worker):
     assert runner.calls and not runner.answers
 
 
+def test_progress_mode_covers_one_photo(person, runner, worker):
+    view = person.bot.post("/api/bot/progress-mode").json()["view"]
+    assert view["buttons"][0][0]["data"] == "p:x"
+    assert person.say(photos=[jpeg(), jpeg()]).json()["view"]["text"].startswith("📸")
+    # The next photo is food again: it goes to the assistant, not to the album.
+    runner.answers.append({"reply": "Похоже на салат", "actions": []})
+    assert person.say(photos=[jpeg()]).json()["job_id"]
+    run_jobs(worker)
+    assert len(person.web.get("/api/progress-photos").json()) == 2
+    # Cancelled, or followed by a text message: no body photo either.
+    person.bot.post("/api/bot/progress-mode")
+    assert "едой" in person.press("p:x")["view"]["text"]
+    runner.answers.append({"reply": "Ок", "actions": []})
+    assert person.say(photos=[jpeg()]).json()["job_id"]
+    run_jobs(worker)
+    assert len(person.web.get("/api/progress-photos").json()) == 2
+
+
 def test_runner_failures(person, runner, worker, sessions):
     runner.answers += [
         RunnerError("ssh", "connection reset", transient=True),

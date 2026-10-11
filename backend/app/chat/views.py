@@ -101,26 +101,16 @@ def meal_text(meal: Meal, tz_name: str, day_total: dict | None = None, target=No
 def meal_buttons(meal: Meal, deleting: bool = False) -> list:
     if deleting:
         return [[button("🗑 Да, удалить", f"m:dd:{meal.id}"), button("Отмена", f"m:v:{meal.id}")]]
-    types = [
-        button(("✓ " if meal.meal_type == code else "") + label, f"m:t:{meal.id}:{short}")
-        for short, code in TYPE_CODES.items()
-        for label in [MEAL_TYPES[code]]
-    ]
+    # One short row: the rest (meal type, time, grams) is fixed in words via "Fix".
     if meal.status == "draft":
-        rows = [
-            [button("✅ Сохранить", f"m:ok:{meal.id}"), button("✏️ Исправить", f"m:e:{meal.id}")],
-            types,
-            [button("🗑 Не сохранять", f"m:x:{meal.id}")],
+        return [
+            [
+                button("✅ Сохранить", f"m:ok:{meal.id}"),
+                button("✏️ Исправить", f"m:e:{meal.id}"),
+                button("🗑", f"m:x:{meal.id}"),
+            ]
         ]
-    else:
-        rows = [
-            [button("✏️ Исправить", f"m:e:{meal.id}"), button("🗑 Удалить", f"m:d:{meal.id}")],
-            types,
-        ]
-    link = site_button("Открыть в дневнике", f"/diary?meal={meal.id}")
-    if link:
-        rows.append([link])
-    return rows
+    return [[button("✏️ Исправить", f"m:e:{meal.id}"), button("🗑 Удалить", f"m:d:{meal.id}")]]
 
 
 def meal_view(meal: Meal, tz_name: str, day_total=None, target=None, deleting=False) -> dict:

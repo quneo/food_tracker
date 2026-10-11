@@ -26,7 +26,8 @@ from app.reminders import service as reminders
 from app.users import service as users
 from app.users.models import User
 
-PROGRESS_MODE = timedelta(minutes=15)
+# /progress applies to the next photo only, and only for a while.
+PROGRESS_MODE = timedelta(minutes=10)
 PROGRESS_WORDS = re.compile(r"^\s*(прогресс|фото тела|фото прогресса|моя форма)\b", re.I)
 WEIGHT = re.compile(
     r"^\s*(?P<word>вес|взвесил(?:ся|ась)?|weight)?\s*[:=-]?\s*"
@@ -34,15 +35,16 @@ WEIGHT = re.compile(
     re.IGNORECASE,
 )
 HELP = (
-    "Я помогаю вести дневник питания и следить за прогрессом.\n\n"
-    "• Пришлите <b>фото еды</b> — оценю состав, вес и КБЖУ.\n"
-    "• Или опишите словами: <i>«овсянка 60 г на молоке и банан»</i>.\n"
-    "• Вес: <i>«вес 82.4»</i>, замеры: <i>«талия 80, бедра 98»</i>.\n"
-    "• Фото тела: подпишите «прогресс» или нажмите /progress.\n"
-    "• Исправления словами: <i>«в обеде риса было 200 г»</i>, <i>«удали вчерашний ужин»</i>.\n"
-    "• Вопросы: <i>«сколько белка я съел за неделю?»</i>, <i>«что съесть на ужин?»</i>\n"
-    "• Напоминания: <i>«напоминай взвешиваться в 8 утра»</i>.\n\n"
-    "/today — итоги дня, /new — новый разговор, /app — дневник на сайте."
+    "<b>Как пользоваться</b>\n\n"
+    "🍽 <b>Еда.</b> Пришлите фото тарелки или напишите, что съели: "
+    "<i>«овсянка 60 г на молоке и банан»</i>. Я посчитаю КБЖУ и покажу черновик — "
+    "нажмите «Сохранить» или напишите, что поправить: <i>«риса было 200 г»</i>.\n\n"
+    "⚖️ <b>Вес и замеры.</b> Просто числом: <i>«вес 82.4»</i>, <i>«талия 80»</i>.\n\n"
+    "📸 <b>Фото тела.</b> Подпишите фото словом «прогресс» или нажмите /progress перед "
+    "отправкой. Остальные фото я считаю едой.\n\n"
+    "💬 <b>Вопросы.</b> <i>«сколько белка за неделю?»</i>, <i>«что съесть на ужин?»</i>, "
+    "<i>«напоминай взвешиваться в 8»</i>.\n\n"
+    "/today — итоги дня · /new — новый разговор"
 )
 
 
@@ -131,8 +133,9 @@ def progress_mode(db: Session, user: User) -> dict:
     state.mode_until = utcnow() + PROGRESS_MODE
     db.commit()
     return view(
-        "📸 Присылайте фото прогресса — сохраню их в альбом. Режим включен на 15 минут, "
-        "подпись к фото станет комментарием. Эти фото не отправляются в AI."
+        "📸 Пришлите следующим сообщением фото тела (можно несколько сразу) — сохраню в "
+        "альбом прогресса. Подпись станет комментарием. Эти фото не уходят в AI.",
+        [[views.button("✖️ Отмена", "p:x")]],
     )
 
 
@@ -199,11 +202,14 @@ def receive(
         for data in photos
     ]
     state = state_of(db, user)
-    if state.mode == "progress" and (not state.mode_until or state.mode_until < utcnow()):
-        state.mode = None
+    armed = state.mode == "progress" and bool(state.mode_until and state.mode_until > utcnow())
+    # /progress covers the next message only: photos in it are body photos, anything else
+    # means the person moved on.
+    state.mode = None
 
-    # Body photos: explicit mode or caption; they never leave the server.
-    if saved and (state.mode == "progress" or PROGRESS_WORDS.match(text)):
+    # Body photos: /progress right before, or the caption says so; they never leave the
+    # server. Every other photo is treated as food by the assistant.
+    if saved and (armed or PROGRESS_WORDS.match(text)):
         note = PROGRESS_WORDS.sub("", text).strip(" ,.:-—") or None
         created = [
             ["progress_photo", progress.make_progress_photo(db, user, item, note=note).id]
@@ -329,6 +335,12 @@ def _press(db: Session, user: User, parts: list[str]) -> dict:
         result["view"] = view(
             "✅ Вход подтвержден. Вернитесь в браузер." if approve else "✖️ Вход отклонен."
         )
+        return result
+
+    if head == "p" and parts[1] == "x":
+        state_of(db, user).mode = None
+        db.commit()
+        result["view"] = view("Хорошо, следующее фото посчитаю едой.")
         return result
 
     if head == "r" and parts[1] == "off":
