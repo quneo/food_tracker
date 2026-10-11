@@ -12,6 +12,7 @@ import { RemindersSection } from '@/components/profile/RemindersSection'
 import { MemorySection } from '@/components/profile/MemorySection'
 import { AccountSection } from '@/components/profile/AccountSection'
 import { AdminSection } from '@/components/profile/AdminSection'
+import { AiUsageSection } from '@/components/profile/AiUsageSection'
 
 export default function ProfilePage() {
   const user = useUser()
@@ -83,6 +84,9 @@ export default function ProfilePage() {
           )}
         </div>
       </Tabs>
+      <div className="mt-8 max-w-3xl">
+        <AiUsageSection />
+      </div>
     </>
   )
 }

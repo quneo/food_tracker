@@ -204,7 +204,9 @@ class Worker:
             job.result = result.model_dump()
             job.duration_ms = answer.duration_ms
             job.input_tokens = answer.input_tokens
+            job.cached_input_tokens = answer.cached_input_tokens
             job.output_tokens = answer.output_tokens
+            job.reasoning_output_tokens = answer.reasoning_output_tokens
             db.commit()
 
     def fail(self, job_id: int, error: runner.RunnerError):

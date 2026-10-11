@@ -4,7 +4,9 @@ from typing import Literal
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from app.ai import usage
 from app.api.deps import CurrentUser, Db
+from app.config import get_settings
 from app.core.exceptions import DomainError
 from app.core.timeutil import local_today, valid_zone, zone
 from app.nutrition import targets
@@ -78,3 +80,9 @@ def suggested_targets(user: CurrentUser, db: Db):
     if not result:
         raise DomainError("Для расчета нужны пол, дата рождения, рост и хотя бы одно взвешивание")
     return result
+
+
+@router.get("/ai-usage")
+def ai_usage(user: CurrentUser, db: Db):
+    """Tokens the assistant spent on this person: today, 7 and 30 days, all time."""
+    return usage.summary(db, user, get_settings())

@@ -45,7 +45,9 @@ FAKE_CODEX = textwrap.dedent(
     answer = json.dumps({"reply": "ok", "actions": []})
     events.append({"type": "item.completed", "item": {"type": "agent_message", "text": answer}})
     events.append({"type": "turn.completed",
-                   "usage": {"input_tokens": 1200, "output_tokens": 80}})
+                   "usage": {"input_tokens": 1200, "cached_input_tokens": 1000,
+                             "output_tokens": 80, "reasoning_output_tokens": 30,
+                             "total_tokens": 1280}})
     out = argv[argv.index("--output-last-message") + 1]
     with open(out, "w") as f:
         f.write(answer)
@@ -102,7 +104,13 @@ def request(**changes):
 def test_runs_codex_without_putting_text_on_the_command_line(env):
     answer = run(env, request())
     assert answer["ok"] and answer["output"] == {"reply": "ok", "actions": []}
-    assert answer["model"] == "gpt-test" and answer["usage"]["input_tokens"] == 1200
+    assert answer["model"] == "gpt-test"
+    assert answer["usage"] == {
+        "input_tokens": 1200,
+        "cached_input_tokens": 1000,
+        "output_tokens": 80,
+        "reasoning_output_tokens": 30,
+    }
     log = json.loads(codex_log(env).read_text())
     argv = log["argv"]
     assert argv[:2] == ["exec", "--cd"] and argv[-2:] == ["--", "-"]

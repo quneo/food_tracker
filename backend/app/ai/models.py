@@ -46,6 +46,7 @@ class AiJob(Base):
     __table_args__ = (
         CheckConstraint("status IN ('queued', 'running', 'done', 'failed')"),
         Index("ix_ai_jobs_status", "status", "id"),
+        Index("ix_ai_jobs_user_finished", "user_id", "finished_at"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
@@ -61,8 +62,11 @@ class AiJob(Base):
     error: Mapped[str | None] = mapped_column(String(500))
     result: Mapped[dict | None]
     duration_ms: Mapped[int | None]
+    # Codex's counts; cached input is part of input, reasoning is part of output.
     input_tokens: Mapped[int | None]
+    cached_input_tokens: Mapped[int | None]
     output_tokens: Mapped[int | None]
+    reasoning_output_tokens: Mapped[int | None]
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     started_at: Mapped[datetime | None]
     finished_at: Mapped[datetime | None]

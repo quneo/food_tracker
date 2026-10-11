@@ -1055,12 +1055,6 @@
   }
 }
 
-/* Diary filters come first on phones, in the side panel on wide screens. */
-@media (max-width: 1179px) {
-  .diary-side {
-    order: -1;
-  }
-}
 [data-slot='empty-title'] {
   font-family: var(--font-serif);
   font-size: 19px;

@@ -24,6 +24,7 @@ export function DateRangePicker({
   onChange,
   maxDays = 400,
   label,
+  variant = 'outline',
   className,
 }: {
   from?: string
@@ -32,6 +33,7 @@ export function DateRangePicker({
   onChange: (from: string, to: string) => void
   maxDays?: number
   label?: ReactNode
+  variant?: 'outline' | 'ghost'
   className?: string
 }) {
   const desktop = useDesktop()
@@ -78,7 +80,7 @@ export function DateRangePicker({
 
   const trigger = (
     <Button
-      variant="outline"
+      variant={variant}
       className={className}
       onClick={desktop ? undefined : () => show(true)}
     >

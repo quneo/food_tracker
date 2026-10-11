@@ -67,7 +67,9 @@ class FakeRunner:
         answer = self.answers.pop(0)
         if isinstance(answer, Exception):
             raise answer
-        return RunnerResult(answer, "gpt-test", 1000, 200, 1234)
+        return RunnerResult(
+            answer, "gpt-test", 1000, 200, 1234, cached_input_tokens=800, reasoning_output_tokens=50
+        )
 
 
 @pytest.fixture

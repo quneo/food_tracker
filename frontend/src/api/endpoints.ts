@@ -25,6 +25,7 @@ import type {
   ReminderIn,
   Report,
   SuggestedTargets,
+  AiUsage,
   TelegramWidgetUser,
   User,
   TelegramLink,
@@ -136,6 +137,7 @@ export const profileApi = {
   get: ({ signal }: Signal = {}) => api<Profile>('/profile', { signal }),
   save: (data: Profile) => api<Profile>('/profile', json('PUT', data)),
   suggested: () => api<SuggestedTargets>('/profile/suggested-targets'),
+  aiUsage: ({ signal }: Signal = {}) => api<AiUsage>('/profile/ai-usage', { signal }),
 }
 
 export const remindersApi = {

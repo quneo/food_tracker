@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Check, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { mealsApi } from '@/api/endpoints'
 import { invalidateMeals, keys } from '@/api/keys'
@@ -10,12 +9,16 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
 import { MEAL_TYPES } from '@/lib/labels'
-import { localInput, nowIn, num, todayIn } from '@/lib/format'
-import { ConfidenceBadge, kcalRange, useConfirmMeal } from './MealBits'
-import { ItemsEditor, emptyItem, itemDraft, toItems, type ItemDraft } from './ItemsEditor'
-import { MealPhotos } from './MealPhotos'
+import { localInput, nowIn, todayIn } from '@/lib/format'
+import {
+  ItemsEditor,
+  comparableItems,
+  emptyItem,
+  itemDraft,
+  toItems,
+  type ItemDraft,
+} from './ItemsEditor'
 import type { Meal, MealPatch, MealType } from '@/types'
 
 interface Form {
@@ -26,17 +29,16 @@ interface Form {
   items: ItemDraft[]
 }
 
-const comparable = (items: ItemDraft[]) =>
-  JSON.stringify(items.map(({ key: _key, ...rest }) => rest))
-
-/** Viewing and editing one meal, or writing a new one (no `meal`). */
+/** Editing one meal, or writing a new one (no `meal`). */
 export function MealEditor({
   meal,
   onDone,
+  onCancel,
   onCreated,
 }: {
   meal?: Meal
   onDone: () => void
+  onCancel?: () => void
   onCreated?: (meal: Meal) => void
 }) {
   const user = useUser()
@@ -62,10 +64,8 @@ export function MealEditor({
   )
   const [form, setForm] = useState<Form>(initial)
   const [error, setError] = useState('')
-  const [deleting, setDeleting] = useState(false)
-  const confirmMeal = useConfirmMeal()
 
-  const itemsChanged = comparable(form.items) !== comparable(initial.items)
+  const itemsChanged = comparableItems(form.items) !== comparableItems(initial.items)
   const dirty =
     itemsChanged ||
     form.title !== initial.title ||
@@ -113,23 +113,9 @@ export function MealEditor({
     meta: { silent: true },
   })
 
-  const remove = useMutation({
-    mutationFn: () => mealsApi.remove(meal!.id),
-    onSuccess: async () => {
-      client.removeQueries({ queryKey: keys.meal(meal!.id) })
-      await invalidateMeals(client)
-      toast.success('Запись удалена')
-      onDone()
-    },
-    // Storage cleanup can fail after the record is gone: show the truth either way.
-    onError: () => invalidateMeals(client),
-    meta: { silent: true },
-  })
-
   const set = <K extends keyof Form>(field: K, value: Form[K]) =>
     setForm((current) => ({ ...current, [field]: value }))
 
-  const range = meal ? kcalRange(meal) : ''
   return (
     <form
       className="flex flex-col gap-5"
@@ -138,47 +124,6 @@ export function MealEditor({
         save.mutate()
       }}
     >
-      {meal?.status === 'draft' && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed border-warning/60 bg-warning-soft px-4 py-3">
-          <p className="text-sm">
-            <span className="font-medium">Черновик.</span> Не учитывается в итогах дня.
-            {dirty && (
-              <span className="block text-muted-foreground">Сначала сохраните изменения.</span>
-            )}
-          </p>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => confirmMeal.mutate(meal.id)}
-            disabled={confirmMeal.isPending || dirty}
-          >
-            <Check />
-            Сохранить в дневник
-          </Button>
-        </div>
-      )}
-
-      {meal && (
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="text-2xl font-semibold tracking-tight">{num(meal.kcal)} ккал</span>
-            {range && <span className="text-sm text-muted-foreground">диапазон {range}</span>}
-          </div>
-          <ConfidenceBadge meal={meal} />
-          {meal.estimated_by === 'ai' && meal.assumptions.length > 0 && (
-            <div className="rounded-[14px] bg-muted px-4 py-3 text-sm">
-              <p className="mb-1 font-medium">Допущения AI</p>
-              <ul className="list-disc space-y-0.5 pl-5 text-muted-foreground">
-                {meal.assumptions.map((item, index) => (
-                  <li key={index}>{item}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <MealPhotos meal={meal} />
-        </div>
-      )}
-
       <div className="flex flex-col gap-2">
         <Label htmlFor="meal-title">Название</Label>
         <Input
@@ -246,15 +191,9 @@ export function MealEditor({
       )}
 
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-        {meal ? (
-          <Button
-            type="button"
-            variant="ghost"
-            className="text-destructive hover:text-destructive"
-            onClick={() => setDeleting(true)}
-          >
-            <Trash2 />
-            Удалить запись
+        {onCancel ? (
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            Отмена
           </Button>
         ) : (
           <span />
@@ -267,16 +206,6 @@ export function MealEditor({
           {save.isPending ? 'Сохраняем…' : meal ? 'Сохранить изменения' : 'Добавить'}
         </Button>
       </div>
-
-      {meal && (
-        <ConfirmDialog
-          open={deleting}
-          onOpenChange={setDeleting}
-          title={`Удалить «${meal.title}»?`}
-          description="Запись и ее фото удалятся без возможности восстановления."
-          onConfirm={() => remove.mutateAsync()}
-        />
-      )}
     </form>
   )
 }

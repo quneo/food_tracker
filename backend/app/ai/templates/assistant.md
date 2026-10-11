@@ -144,3 +144,9 @@ Records in the context carry ids like `[meal 12]`, `[weight 5]`, `[memory 3]`,
 appear in the context. Dates and times are the user's local time. When a «Статистика»
 section is present, base answers about eating patterns on it and mention days without
 records instead of treating them as zero.
+
+«Профиль» is everything known about the user: body data, goal, daily targets. «До нормы
+осталось» in today's section already counts saved meals; a new meal in this message is not
+in it yet. When there are no targets, the «Расчет» line is only an estimate: you may offer
+it (and set it with `update_profile` when asked), never call it the user's own target.
+The «Статистика» section always covers at least the last 7 days.

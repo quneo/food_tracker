@@ -152,6 +152,16 @@ def configured_model():
     return None
 
 
+# Codex's token counts: cached input is part of input, reasoning is part of output.
+USAGE_FIELDS = (
+    "input_tokens",
+    "cached_input_tokens",
+    "cache_write_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+)
+
+
 def parse_events(stdout):
     """Codex --json prints JSONL events; collect the answer, usage, errors and tool use."""
     text, usage, errors, tools = None, {}, [], []
@@ -259,8 +269,7 @@ def run_codex(prompt, schema, images, model, effort, timeout):
             "output": output,
             "model": model or configured_model(),
             "usage": {
-                "input_tokens": usage.get("input_tokens"),
-                "output_tokens": usage.get("output_tokens"),
+                field: usage[field] for field in USAGE_FIELDS if isinstance(usage.get(field), int)
             },
             "duration_ms": duration,
         }

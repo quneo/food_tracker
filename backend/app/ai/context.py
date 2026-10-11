@@ -13,7 +13,7 @@ from app.ai.models import MemoryFact
 from app.chat.models import ChatMessage, ChatState
 from app.core.timeutil import local_now, to_local, zone
 from app.nutrition.models import Meal, MealItem
-from app.nutrition.targets import age
+from app.nutrition.targets import age, suggest
 from app.progress.models import MEASUREMENTS, Measurement, ProgressPhoto, WeightEntry
 from app.reminders.models import Reminder
 from app.reminders.service import describe
@@ -111,6 +111,9 @@ class Context:
             .order_by(WeightEntry.measured_at.desc())
             .limit(1)
         )
+        if profile.height_cm and weight:
+            bmi = weight.weight_kg / (profile.height_cm / 100) ** 2
+            lines.append(f"ИМТ: {n(bmi, 1)}")
         if weight:
             lines.append(f"Последний вес: {n(weight.weight_kg, 1)} кг ({weight.measured_on:%d.%m})")
         if profile.goal:
@@ -131,6 +134,29 @@ class Context:
             if value
         ]
         lines.append("Норма в день: " + (", ".join(targets) if targets else "не задана"))
+        estimate = suggest(
+            profile.sex,
+            profile.birth_date,
+            profile.height_cm,
+            weight.weight_kg if weight else None,
+            profile.activity,
+            profile.goal,
+            self.today,
+        )
+        if estimate:
+            lines.append(
+                f"Расчет по Миффлину — Сан Жеору: обмен {estimate['bmr']}, расход "
+                f"{estimate['tdee']} ккал; под цель {estimate['kcal']} ккал, "
+                f"Б {estimate['protein']} / Ж {estimate['fat']} / У {estimate['carbs']}"
+            )
+        lines.append(
+            "Новые приемы пищи: "
+            + (
+                "сохраняются сразу"
+                if profile.auto_confirm_meals
+                else "приходят черновиком, человек подтверждает"
+            )
+        )
         if profile.about:
             lines.append(f"О себе: {profile.about}")
         return "## Профиль\n" + "\n".join(lines)
@@ -176,6 +202,21 @@ class Context:
             f"Сохранено: {n(total['kcal'])} ккал{share}, Б {n(total['protein'])} / "
             f"Ж {n(total['fat'])} / У {n(total['carbs'])}"
         ]
+        profile = self.user.profile
+        left = [
+            f"{label} {n(value - total[field])}"
+            if value >= total[field]
+            else f"{label} перебор {n(total[field] - value)}"
+            for label, field, value in (
+                ("ккал", "kcal", profile.kcal_target),
+                ("Б", "protein", profile.protein_target),
+                ("Ж", "fat", profile.fat_target),
+                ("У", "carbs", profile.carbs_target),
+            )
+            if value
+        ]
+        if left:
+            lines.append("До нормы осталось: " + ", ".join(left))
         lines += [self.meal_line(meal) for meal in meals] or ["- записей нет"]
         recent = []
         for back in (1, 2):
@@ -433,9 +474,8 @@ class Context:
         """Day by day numbers for a review, or when the person asks about their eating."""
         from app.analytics.service import daily, report
 
-        days = self.review_days or (14 if self.wants_stats() else 0)
-        if not days:
-            return ""
+        # A short week by default, so advice and meal comments see the trend.
+        days = self.review_days or (14 if self.wants_stats() else 7)
         start = self.today - timedelta(days=days - 1)
         rows = daily(self.db, self.user, start, self.today)
         meals = self.db.scalars(

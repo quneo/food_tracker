@@ -10,7 +10,13 @@ import type { Meal } from '@/types'
 
 /** A meal in the diary, drawn as a message: photos on top, the numbers, the time in the
  * corner. A draft gets buttons underneath, like a bot's inline keyboard. */
-export function MealCard({ meal, onOpen }: { meal: Meal; onOpen: (id: number) => void }) {
+export function MealCard({
+  meal,
+  onOpen,
+}: {
+  meal: Meal
+  onOpen: (id: number, edit?: boolean) => void
+}) {
   const [viewing, setViewing] = useState<number | null>(null)
   const confirm = useConfirmMeal()
   const draft = meal.status === 'draft'
@@ -122,7 +128,7 @@ export function MealCard({ meal, onOpen }: { meal: Meal; onOpen: (id: number) =>
             <Check aria-hidden="true" />
             Сохранить
           </button>
-          <button type="button" onClick={() => onOpen(meal.id)}>
+          <button type="button" onClick={() => onOpen(meal.id, true)}>
             <PencilLine aria-hidden="true" />
             Исправить
           </button>

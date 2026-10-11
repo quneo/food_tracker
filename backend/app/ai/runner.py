@@ -32,6 +32,9 @@ class RunnerResult:
     input_tokens: int | None
     output_tokens: int | None
     duration_ms: int
+    # Parts of the two above: input read from Codex's cache, output spent on reasoning.
+    cached_input_tokens: int | None = None
+    reasoning_output_tokens: int | None = None
 
 
 def command(settings: Settings) -> list[str]:
@@ -125,4 +128,6 @@ async def run(prompt: str, schema: dict, images: list[bytes]) -> RunnerResult:
         input_tokens=usage.get("input_tokens"),
         output_tokens=usage.get("output_tokens"),
         duration_ms=duration,
+        cached_input_tokens=usage.get("cached_input_tokens"),
+        reasoning_output_tokens=usage.get("reasoning_output_tokens"),
     )

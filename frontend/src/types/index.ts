@@ -276,6 +276,28 @@ export interface Profile {
   auto_confirm_meals: boolean
 }
 
+/** Codex's token counts; cached input is part of input, reasoning part of output. */
+export interface AiUsagePeriod {
+  key: 'today' | 'week' | 'month' | 'all'
+  label: string
+  requests: number
+  /** Requests that came with token counts (older ones may not). */
+  measured: number
+  input: number
+  cached: number
+  output: number
+  reasoning: number
+  total: number
+  /** USD, when prices are set on the server. */
+  cost: number | null
+}
+
+export interface AiUsage {
+  periods: AiUsagePeriod[]
+  model: string | null
+  priced: boolean
+}
+
 export interface SuggestedTargets {
   kcal: number
   protein: number

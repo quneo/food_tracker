@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     ai_reasoning_effort: Literal["low", "medium", "high", "xhigh"] = "medium"
     ai_timeout: int = Field(default=240, ge=30, le=900)
     ai_max_parallel: int = Field(default=2, ge=1, le=8)
+    # Optional prices in USD per million tokens, to show the cost next to the token counts
+    # in the profile. Cached input falls back to the input price.
+    ai_price_input: float | None = Field(default=None, ge=0)
+    ai_price_cached_input: float | None = Field(default=None, ge=0)
+    ai_price_output: float | None = Field(default=None, ge=0)
 
     @field_validator(
         "ai_ssh_target",
@@ -68,6 +73,9 @@ class Settings(BaseSettings):
         "bastion_client_id",
         "bastion_client_secret",
         "bastion_public_url",
+        "ai_price_input",
+        "ai_price_cached_input",
+        "ai_price_output",
         mode="before",
     )
     @classmethod

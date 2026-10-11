@@ -13,7 +13,8 @@ import type { Meal } from '@/types'
 const MAX_PHOTOS = 6
 export const PHOTO_TYPES = 'image/jpeg,image/png,image/webp'
 
-export function MealPhotos({ meal }: { meal: Meal }) {
+/** `compact`: without photos, a small button instead of an empty tile. */
+export function MealPhotos({ meal, compact = false }: { meal: Meal; compact?: boolean }) {
   const client = useQueryClient()
   const input = useRef<HTMLInputElement>(null)
   const [viewing, setViewing] = useState<number | null>(null)
@@ -71,17 +72,31 @@ export function MealPhotos({ meal }: { meal: Meal }) {
             </button>
           </div>
         ))}
-        {meal.photos.length < MAX_PHOTOS && (
+        {compact && meal.photos.length === 0 ? (
           <Button
             type="button"
-            variant="outline"
-            className="size-24 flex-col gap-1 rounded-[14px] border-dashed text-xs font-normal text-muted-foreground sm:size-28"
+            variant="ghost"
+            size="sm"
+            className="-ml-2 text-muted-foreground"
             onClick={() => input.current?.click()}
             disabled={upload.isPending}
           >
-            <ImagePlus className="size-5" />
+            <ImagePlus />
             {upload.isPending ? 'Загрузка…' : 'Добавить фото'}
           </Button>
+        ) : (
+          meal.photos.length < MAX_PHOTOS && (
+            <Button
+              type="button"
+              variant="outline"
+              className="size-24 flex-col gap-1 rounded-[14px] border-dashed text-xs font-normal text-muted-foreground sm:size-28"
+              onClick={() => input.current?.click()}
+              disabled={upload.isPending}
+            >
+              <ImagePlus className="size-5" />
+              {upload.isPending ? 'Загрузка…' : 'Добавить фото'}
+            </Button>
+          )
         )}
       </div>
       <input

@@ -12,6 +12,7 @@ export const keys = {
   photos: ['progress-photos'] as const,
   profile: ['profile'] as const,
   suggested: ['suggested-targets'] as const,
+  aiUsage: ['ai-usage'] as const,
   reminders: ['reminders'] as const,
   memory: ['memory'] as const,
   products: ['products'] as const,
