@@ -5,7 +5,8 @@
 set -eu
 
 cd "$(dirname "$0")/.."
-COMPOSE="docker compose -f docker-compose.yml"
+PROJECT=${COMPOSE_PROJECT_NAME:-food-tracker}
+COMPOSE="docker compose -p $PROJECT -f docker-compose.yml"
 [ -f compose.local.yml ] && COMPOSE="$COMPOSE -f compose.local.yml"
 BACKUP_DIR=${BACKUP_DIR:-/srv/food-tracker/backups}
 MC_IMAGE=${MC_IMAGE:-pgsty/mc:RELEASE.2026-09-16T00-00-00Z}
@@ -21,7 +22,7 @@ $COMPOSE exec -T backend python -m app.backup /data/backups
 echo "$(date -Is) photos"
 mkdir -p "$BACKUP_DIR/media"
 docker run --rm \
-    --network food-tracker_default \
+    --network "${PROJECT}_default" \
     --user "$(id -u):$(id -g)" \
     -e MC_CONFIG_DIR=/tmp/mc \
     -e "MC_HOST_food=http://$S3_ACCESS_KEY:$S3_SECRET_KEY@minio:9000" \
