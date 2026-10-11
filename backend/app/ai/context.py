@@ -1,0 +1,398 @@
+"""What the assistant gets to see with a message: a compact text snapshot of the person's
+data, picked for this message. Records carry ids like [meal 12] so actions can refer to them."""
+
+import re
+from collections import defaultdict
+from datetime import date, timedelta
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.ai import memory
+from app.ai.models import MemoryFact
+from app.chat.models import ChatMessage, ChatState
+from app.core.timeutil import local_now, to_local, zone
+from app.nutrition.models import Meal, MealItem
+from app.nutrition.targets import age
+from app.progress.models import MEASUREMENTS, Measurement, ProgressPhoto, WeightEntry
+from app.reminders.models import Reminder
+from app.reminders.service import describe
+from app.users.models import User
+
+WEEKDAYS = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
+MEAL_TYPES = {"breakfast": "завтрак", "lunch": "обед", "dinner": "ужин", "snack": "перекус"}
+SEX = {"male": "мужской", "female": "женский"}
+GOALS = {"lose": "снижение веса", "maintain": "поддержание веса", "gain": "набор массы"}
+ACTIVITY = {
+    "sedentary": "сидячий образ жизни",
+    "light": "низкая активность",
+    "moderate": "умеренная активность",
+    "high": "высокая активность",
+    "very_high": "очень высокая активность",
+}
+DAY_WORDS = {"сегодня": 0, "вчера": 1, "позавчера": 2}
+DATE = re.compile(r"\b(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?\b")
+HISTORY_DAYS = 60
+RECENT_MESSAGES = 12
+
+
+def n(value: float | None, digits: int = 0) -> str:
+    if value is None:
+        return "?"
+    rounded = round(value, digits)
+    return str(int(rounded)) if digits == 0 or rounded == int(rounded) else str(rounded)
+
+
+def macros(record) -> str:
+    return f"{n(record.kcal)} ккал, Б {n(record.protein)} / Ж {n(record.fat)} / У {n(record.carbs)}"
+
+
+class Context:
+    def __init__(self, db: Session, user: User, message: ChatMessage):
+        self.db = db
+        self.user = user
+        self.message = message
+        self.text = message.text
+        self.photos = message.photos
+        self.tz = zone(user.profile.timezone)
+        self.now = local_now(self.tz)
+        self.today = self.now.date()
+        self.state = db.get(ChatState, user.id)
+
+    def build(self) -> str:
+        parts = [
+            self.section_now(),
+            self.section_profile(),
+            self.section_today(),
+            self.section_drafts(),
+            self.section_mentioned_days(),
+            self.section_similar_meals(),
+            self.section_frequent_foods(),
+            self.section_body(),
+            self.section_reminders(),
+            self.section_memory(),
+            self.section_conversation(),
+            self.section_message(),
+        ]
+        return "\n\n".join(part for part in parts if part)
+
+    # Sections
+
+    def section_now(self) -> str:
+        weekday = WEEKDAYS[self.now.weekday()]
+        return (
+            f"## Сейчас\n{self.now:%Y-%m-%d %H:%M}, {weekday}, "
+            f"часовой пояс {self.user.profile.timezone}"
+        )
+
+    def section_profile(self) -> str:
+        profile = self.user.profile
+        lines = [f"Имя: {self.user.first_name or 'не указано'}"]
+        if profile.sex:
+            lines.append(f"Пол: {SEX[profile.sex]}")
+        if profile.birth_date:
+            lines.append(f"Возраст: {age(profile.birth_date, self.today)}")
+        if profile.height_cm:
+            lines.append(f"Рост: {n(profile.height_cm)} см")
+        weight = self.db.scalar(
+            select(WeightEntry)
+            .where(WeightEntry.user_id == self.user.id)
+            .order_by(WeightEntry.measured_at.desc())
+            .limit(1)
+        )
+        if weight:
+            lines.append(f"Последний вес: {n(weight.weight_kg, 1)} кг ({weight.measured_on:%d.%m})")
+        if profile.goal:
+            goal = GOALS[profile.goal]
+            if profile.target_weight_kg:
+                goal += f", целевой вес {n(profile.target_weight_kg, 1)} кг"
+            lines.append(f"Цель: {goal}")
+        if profile.activity:
+            lines.append(f"Активность: {ACTIVITY[profile.activity]}")
+        targets = [
+            f"{label} {value}"
+            for label, value in (
+                ("ккал", profile.kcal_target),
+                ("Б", profile.protein_target),
+                ("Ж", profile.fat_target),
+                ("У", profile.carbs_target),
+            )
+            if value
+        ]
+        lines.append("Норма в день: " + (", ".join(targets) if targets else "не задана"))
+        if profile.about:
+            lines.append(f"О себе: {profile.about}")
+        return "## Профиль\n" + "\n".join(lines)
+
+    def meal_line(self, meal: Meal, with_day: bool = False) -> str:
+        local = to_local(meal.eaten_at, self.tz)
+        when = f"{local:%d.%m %H:%M}" if with_day else f"{local:%H:%M}"
+        kind = MEAL_TYPES.get(meal.meal_type or "", "")
+        status = "черновик" if meal.status == "draft" else "сохранен"
+        return f"- [meal {meal.id}] {when} {kind}: {meal.title}; {macros(meal)}; {status}"
+
+    def meal_details(self, meal: Meal) -> str:
+        lines = [self.meal_line(meal, with_day=True)]
+        for item in meal.items:
+            grams = (
+                f"~{n(item.grams)} г (оценка)"
+                if item.grams_source == "estimated"
+                else f"{n(item.grams)} г"
+            )
+            lines.append(f"    · {item.name}, {grams}: {macros(item)}")
+        if meal.assumptions:
+            lines.append("    допущения: " + "; ".join(meal.assumptions))
+        if meal.note:
+            lines.append(f"    комментарий: {meal.note}")
+        return "\n".join(lines)
+
+    def meals_on(self, day: date) -> list[Meal]:
+        return list(
+            self.db.scalars(
+                select(Meal)
+                .where(Meal.user_id == self.user.id, Meal.eaten_on == day)
+                .order_by(Meal.eaten_at)
+            )
+        )
+
+    def section_today(self) -> str:
+        meals = self.meals_on(self.today)
+        saved = [meal for meal in meals if meal.status == "confirmed"]
+        total = {f: sum(getattr(m, f) for m in saved) for f in ("kcal", "protein", "fat", "carbs")}
+        target = self.user.profile.kcal_target
+        share = f" ({round(total['kcal'] / target * 100)}% нормы)" if target else ""
+        lines = [
+            f"Сохранено: {n(total['kcal'])} ккал{share}, Б {n(total['protein'])} / "
+            f"Ж {n(total['fat'])} / У {n(total['carbs'])}"
+        ]
+        lines += [self.meal_line(meal) for meal in meals] or ["- записей нет"]
+        recent = []
+        for back in (1, 2):
+            recent += self.meals_on(self.today - timedelta(days=back))
+        if recent:
+            lines.append("Вчера и позавчера:")
+            lines += [self.meal_line(meal, with_day=True) for meal in recent]
+        return "## Питание сегодня\n" + "\n".join(lines)
+
+    def section_drafts(self) -> str:
+        focus = self.state.focus_meal_id if self.state else None
+        drafts = list(
+            self.db.scalars(
+                select(Meal)
+                .where(
+                    Meal.user_id == self.user.id,
+                    Meal.status == "draft",
+                    Meal.eaten_on >= self.today - timedelta(days=3),
+                )
+                .order_by(Meal.eaten_at)
+            )
+        )
+        parts = []
+        if focus:
+            meal = self.db.get(Meal, focus)
+            if meal and meal.user_id == self.user.id:
+                parts.append(
+                    "## Запись, которую пользователь нажал «Исправить»\n"
+                    "Сообщение скорее всего исправляет ее (update_meal с этим id).\n"
+                    + self.meal_details(meal)
+                )
+                drafts = [draft for draft in drafts if draft.id != meal.id]
+        if drafts:
+            parts.append(
+                "## Черновики (ждут подтверждения, еще не учтены в итогах)\n"
+                + "\n".join(self.meal_details(meal) for meal in drafts)
+            )
+        return "\n\n".join(parts)
+
+    def mentioned_days(self) -> list[date]:
+        text = self.text.lower()
+        days = set()
+        for word, back in DAY_WORDS.items():
+            if word in text and back > 0:
+                days.add(self.today - timedelta(days=back))
+        for index, name in enumerate(WEEKDAYS):
+            if name[:4] in text:
+                back = (self.today.weekday() - index) % 7 or 7
+                days.add(self.today - timedelta(days=back))
+        for day, month, year in DATE.findall(text):
+            try:
+                value = date(int(year) if len(year) == 4 else self.today.year, int(month), int(day))
+            except ValueError:
+                continue
+            if value <= self.today:
+                days.add(value)
+        return sorted(day for day in days if day < self.today - timedelta(days=2))
+
+    def section_mentioned_days(self) -> str:
+        lines = []
+        for day in self.mentioned_days()[:3]:
+            meals = self.meals_on(day)
+            lines.append(f"{day:%d.%m.%Y}:")
+            lines += [self.meal_details(meal) for meal in meals] or ["- записей нет"]
+        return "## Упомянутые дни\n" + "\n".join(lines) if lines else ""
+
+    def section_similar_meals(self) -> str:
+        words = memory.stems(self.text)
+        if not words:
+            return ""
+        since = self.today - timedelta(days=HISTORY_DAYS)
+        meals = self.db.scalars(
+            select(Meal)
+            .where(
+                Meal.user_id == self.user.id,
+                Meal.status == "confirmed",
+                Meal.eaten_on >= since,
+                Meal.eaten_on < self.today - timedelta(days=2),
+            )
+            .order_by(Meal.eaten_at.desc())
+            .limit(400)
+        ).all()
+        scored = []
+        for meal in meals:
+            names = " ".join([meal.title] + [item.name for item in meal.items])
+            overlap = len(words & memory.stems(names))
+            if overlap:
+                scored.append((overlap, meal.eaten_at, meal))
+        scored.sort(key=lambda row: (row[0], row[1]), reverse=True)
+        if not scored:
+            return ""
+        return "## Похожие приемы пищи из истории\n" + "\n".join(
+            self.meal_details(meal) for _, _, meal in scored[:5]
+        )
+
+    def section_frequent_foods(self) -> str:
+        since = self.today - timedelta(days=HISTORY_DAYS)
+        items = self.db.scalars(
+            select(MealItem)
+            .join(Meal)
+            .where(
+                Meal.user_id == self.user.id,
+                Meal.status == "confirmed",
+                Meal.eaten_on >= since,
+            )
+        ).all()
+        groups: dict[str, list[MealItem]] = defaultdict(list)
+        for item in items:
+            groups[item.name.strip().lower()].append(item)
+        common = sorted(groups.items(), key=lambda pair: len(pair[1]), reverse=True)[:15]
+        lines = []
+        for _name, group in common:
+            if len(group) < 2:
+                break
+            weighed = [item for item in group if item.grams]
+            grams = sum(item.grams for item in weighed) / len(weighed) if weighed else None
+            density = (
+                sum(item.kcal for item in weighed) / sum(item.grams for item in weighed) * 100
+                if weighed and sum(item.grams for item in weighed)
+                else None
+            )
+            lines.append(
+                f"- {group[0].name}: {len(group)} раз, обычно ~{n(grams)} г, "
+                f"~{n(density)} ккал/100 г"
+            )
+        if not lines:
+            return ""
+        return (
+            "## Частые продукты пользователя (за 60 дней, его же сохраненные оценки)\n"
+            + "\n".join(lines)
+        )
+
+    def section_body(self) -> str:
+        lines = []
+        weights = self.db.scalars(
+            select(WeightEntry)
+            .where(WeightEntry.user_id == self.user.id)
+            .order_by(WeightEntry.measured_at.desc())
+            .limit(10)
+        ).all()
+        if weights:
+            lines.append(
+                "Вес: "
+                + "; ".join(
+                    f"[weight {entry.id}] {entry.measured_on:%d.%m} {n(entry.weight_kg, 1)} кг"
+                    for entry in weights
+                )
+            )
+        entries = self.db.scalars(
+            select(Measurement)
+            .where(Measurement.user_id == self.user.id)
+            .order_by(Measurement.measured_at.desc())
+            .limit(16)
+        ).all()
+        if entries:
+            lines.append(
+                "Замеры: "
+                + "; ".join(
+                    f"[measurement {entry.id}] {entry.measured_on:%d.%m} "
+                    f"{MEASUREMENTS[entry.kind][0].lower()} {n(entry.value, 1)} {entry.unit}"
+                    for entry in entries
+                )
+            )
+        photos = self.db.scalars(
+            select(ProgressPhoto)
+            .where(ProgressPhoto.user_id == self.user.id)
+            .order_by(ProgressPhoto.taken_on.desc())
+            .limit(4)
+        ).all()
+        if photos:
+            lines.append(
+                "Фото прогресса: "
+                + "; ".join(
+                    f"[progress_photo {photo.id}] {photo.taken_on:%d.%m} {photo.pose}"
+                    for photo in photos
+                )
+            )
+        return "## Тело и прогресс\n" + "\n".join(lines) if lines else ""
+
+    def section_reminders(self) -> str:
+        reminders = self.db.scalars(
+            select(Reminder).where(Reminder.user_id == self.user.id).order_by(Reminder.id)
+        ).all()
+        lines = [
+            f"- [reminder {item.id}] {describe(item)}{'' if item.enabled else ' (выключено)'}"
+            for item in reminders
+        ]
+        return "## Напоминания\n" + "\n".join(lines) if lines else ""
+
+    def section_memory(self) -> str:
+        facts: list[MemoryFact] = memory.relevant(self.db, self.user.id, self.text)
+        if not facts:
+            return "## Память о пользователе\n- пока пусто"
+        return "## Память о пользователе\n" + "\n".join(
+            f"- [memory {fact.id}] ({fact.category}) {fact.text}" for fact in facts
+        )
+
+    def section_conversation(self) -> str:
+        since = self.now.replace(tzinfo=None) - timedelta(hours=12)
+        query = (
+            select(ChatMessage)
+            .where(ChatMessage.user_id == self.user.id, ChatMessage.id < self.message.id)
+            .order_by(ChatMessage.id.desc())
+            .limit(RECENT_MESSAGES)
+        )
+        messages = list(reversed(self.db.scalars(query).all()))
+        start = self.state.context_from if self.state and self.state.context_from else None
+        lines = []
+        for message in messages:
+            local = to_local(message.created_at, self.tz)
+            if local.replace(tzinfo=None) < since or (start and message.created_at < start):
+                continue
+            who = "Пользователь" if message.role == "user" else "Ассистент"
+            photos = f" [фото: {message.photos}]" if message.photos else ""
+            text = message.text if len(message.text) <= 600 else message.text[:600] + "…"
+            lines.append(f"[{local:%H:%M}] {who}{photos}: {text}")
+        return "## Недавний диалог\n" + "\n".join(lines) if lines else ""
+
+    def section_message(self) -> str:
+        hints = []
+        if self.photos:
+            hints.append(f"К сообщению приложено фото: {self.photos} шт.")
+        if self.state and self.state.mode == "progress":
+            hints.append("Пользователь включил режим «фото прогресса»: фото — это фото тела.")
+        hint = ("\n" + "\n".join(hints)) if hints else ""
+        text = self.text.strip() or "(без текста)"
+        return f"## Новое сообщение пользователя{hint}\n<<<\n{text}\n>>>"
+
+
+def build(db: Session, user: User, message: ChatMessage) -> str:
+    return Context(db, user, message).build()
