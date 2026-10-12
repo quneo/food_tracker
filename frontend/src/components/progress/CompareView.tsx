@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
-import { ArrowLeftRight, Columns2, GripVertical, Images, SquareSplitHorizontal } from 'lucide-react'
+import { ArrowLeftRight, GripVertical, Images } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
@@ -13,45 +13,67 @@ import { Photo } from '@/components/shared/Photo'
 import { EmptyState } from '@/components/shared/States'
 import { mediaUrl } from '@/api/client'
 import { usePhotoLock } from '@/hooks/usePhotoLock'
-import { poseLabel } from '@/lib/labels'
+import { POSES, poseLabel } from '@/lib/labels'
 import { days as daysText, diffDays, formatDay, num, signed } from '@/lib/format'
-import type { ProgressPhoto } from '@/types'
+import { cn } from '@/lib/utils'
+import type { Pose, ProgressEntry } from '@/types'
 
-const describe = (photo: ProgressPhoto) =>
-  `${formatDay(photo.taken_on, 'd MMM yyyy')} · ${poseLabel(photo.pose)}${
-    photo.weight_kg !== null ? ` · ${num(photo.weight_kg, 1)} кг` : ''
-  }`
-
-/** Defaults: the earliest and the latest photo of the most recently used pose that has two. */
-function defaults(photos: ProgressPhoto[]) {
-  const pose = photos.find(
-    (photo) => photos.filter((other) => other.pose === photo.pose).length > 1,
-  )?.pose
-  const pool = pose ? photos.filter((photo) => photo.pose === pose) : photos
-  return { before: pool[pool.length - 1].id, after: pool[0].id }
+/** One photo of one day in one angle. */
+interface Shot {
+  id: number
+  media_id: number
+  width: number
+  height: number
+  taken_on: string
+  pose: Pose
+  weight_kg: number | null
 }
 
-export function CompareView({ photos }: { photos: ProgressPhoto[] }) {
+const describe = (shot: Shot) =>
+  `${formatDay(shot.taken_on, 'd MMM yyyy')}${
+    shot.weight_kg !== null ? `, ${num(shot.weight_kg, 1)} кг` : ''
+  }`
+
+/** "14 сентября", with the year only when it is not this one: fits a narrow picker. */
+const shortDay = (day: string) =>
+  formatDay(day, day.slice(0, 4) === String(new Date().getFullYear()) ? 'd MMMM' : 'd MMM yyyy')
+
+/** Pick the angle, then two days that have it; the earliest and the latest by default. */
+export function CompareView({ entries }: { entries: ProgressEntry[] }) {
   const { version } = usePhotoLock()
-  // The API lists photos newest first.
-  const initial = useMemo(() => (photos.length > 1 ? defaults(photos) : null), [photos])
-  const [beforeId, setBeforeId] = useState<number | null>(null)
-  const [afterId, setAfterId] = useState<number | null>(null)
+  // Entries come newest first: so do the shots of each angle.
+  const byPose = useMemo(() => {
+    const groups = new Map<Pose, Shot[]>()
+    for (const entry of entries)
+      for (const pose of POSES) {
+        const photo = entry.photos.find((item) => item.pose === pose.value)
+        if (photo)
+          groups.set(pose.value, [
+            ...(groups.get(pose.value) ?? []),
+            { ...photo, taken_on: entry.taken_on, weight_kg: entry.weight_kg },
+          ])
+      }
+    return groups
+  }, [entries])
+  const comparable = POSES.filter((pose) => (byPose.get(pose.value)?.length ?? 0) > 1)
+  const [choice, setChoice] = useState<{ pose: Pose | null; before?: number; after?: number }>({
+    pose: null,
+  })
   const [mode, setMode] = useState<'slider' | 'side'>('slider')
 
-  if (!initial)
+  if (!comparable.length)
     return (
       <EmptyState
         icon={Images}
-        title="Нужно хотя бы два фото"
-        description="Загрузите фото в разные дни — здесь можно будет сравнить их рядом или шторкой."
+        title="Пока не с чем сравнить"
+        description="Нужны хотя бы две записи с одним ракурсом, например спереди в разные дни."
       />
     )
 
-  const before =
-    photos.find((photo) => photo.id === beforeId) ?? photos.find((p) => p.id === initial.before)!
-  const after =
-    photos.find((photo) => photo.id === afterId) ?? photos.find((p) => p.id === initial.after)!
+  const pose = choice.pose ?? comparable[0].value
+  const shots = byPose.get(pose)!
+  const before = shots.find((shot) => shot.id === choice.before) ?? shots[shots.length - 1]
+  const after = shots.find((shot) => shot.id === choice.after) ?? shots[0]
   const span = diffDays(after.taken_on, before.taken_on)
   const delta =
     before.weight_kg !== null && after.weight_kg !== null
@@ -59,69 +81,64 @@ export function CompareView({ photos }: { photos: ProgressPhoto[] }) {
       : null
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
-        <PhotoPicker
-          id="before"
-          label="До"
-          value={before.id}
-          photos={photos}
-          onChange={setBeforeId}
+    <div className="flex flex-col gap-4">
+      <div className="glass flex flex-col gap-4 rounded-[24px] p-4 sm:p-5">
+        <Segmented
+          label="Ракурс"
+          value={pose}
+          options={POSES.map((item) => ({
+            value: item.value,
+            label: item.label,
+            disabled: (byPose.get(item.value)?.length ?? 0) < 2,
+          }))}
+          onChange={(value) => setChoice({ pose: value })}
         />
-        <Button
-          variant="ghost"
-          size="icon"
-          className="justify-self-center"
-          onClick={() => {
-            setBeforeId(after.id)
-            setAfterId(before.id)
-          }}
-          aria-label="Поменять местами"
-          title="Поменять местами"
-        >
-          <ArrowLeftRight />
-        </Button>
-        <PhotoPicker
-          id="after"
-          label="После"
-          value={after.id}
-          photos={photos}
-          onChange={setAfterId}
-        />
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm">
-          <span className="font-medium">{span === 0 ? 'Один день' : daysText(Math.abs(span))}</span>
-          {delta !== null && (
-            <>
-              <span className="text-muted-foreground"> · вес </span>
-              <span className="font-medium tabular">{signed(delta)} кг</span>
-            </>
-          )}
-          {before.pose !== after.pose && (
-            <span className="text-muted-foreground"> · разные ракурсы</span>
-          )}
-        </p>
-        <div className="chips" role="group" aria-label="Вид сравнения">
-          <button
-            type="button"
-            className="chip"
-            aria-pressed={mode === 'slider'}
-            onClick={() => setMode('slider')}
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2">
+          <ShotPicker
+            id="before"
+            label="До"
+            value={before.id}
+            shots={shots}
+            onChange={(id) => setChoice({ ...choice, pose, before: id })}
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setChoice({ pose, before: after.id, after: before.id })}
+            aria-label="Поменять местами"
+            title="Поменять местами"
           >
-            <SquareSplitHorizontal />
-            Шторка
-          </button>
-          <button
-            type="button"
-            className="chip"
-            aria-pressed={mode === 'side'}
-            onClick={() => setMode('side')}
-          >
-            <Columns2 />
-            Рядом
-          </button>
+            <ArrowLeftRight />
+          </Button>
+          <ShotPicker
+            id="after"
+            label="После"
+            value={after.id}
+            shots={shots}
+            onChange={(id) => setChoice({ ...choice, pose, after: id })}
+          />
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[15px]">
+            <span className="font-medium">
+              {span === 0 ? 'Один день' : daysText(Math.abs(span))}
+            </span>
+            {delta !== null && (
+              <span className="text-muted-foreground">
+                , вес{' '}
+                <span className="font-medium text-foreground tabular">{signed(delta)} кг</span>
+              </span>
+            )}
+          </p>
+          <Segmented
+            label="Вид сравнения"
+            value={mode}
+            options={[
+              { value: 'slider', label: 'Шторка' },
+              { value: 'side', label: 'Рядом' },
+            ]}
+            onChange={setMode}
+          />
         </div>
       </div>
 
@@ -130,21 +147,21 @@ export function CompareView({ photos }: { photos: ProgressPhoto[] }) {
       ) : (
         <div className="grid grid-cols-2 gap-2 sm:gap-3">
           {[
-            { photo: before, label: 'До' },
-            { photo: after, label: 'После' },
-          ].map(({ photo, label }) => (
+            { shot: before, label: 'До' },
+            { shot: after, label: 'После' },
+          ].map(({ shot, label }) => (
             <figure key={label} className="flex flex-col gap-2">
               <Photo
-                id={photo.media_id}
-                alt={`${label}: ${describe(photo)}`}
+                id={shot.media_id}
+                alt={`${label}: ${poseLabel(shot.pose)}, ${describe(shot)}`}
                 className="w-full rounded-[16px]"
-                style={{ aspectRatio: `${photo.width || 3} / ${photo.height || 4}` }}
+                style={{ aspectRatio: `${shot.width || 3} / ${shot.height || 4}` }}
                 fit="cover"
                 version={version}
               />
               <figcaption className="text-sm">
                 <span className="font-medium">{label}</span>{' '}
-                <span className="text-muted-foreground">{describe(photo)}</span>
+                <span className="text-muted-foreground">{describe(shot)}</span>
               </figcaption>
             </figure>
           ))}
@@ -154,30 +171,71 @@ export function CompareView({ photos }: { photos: ProgressPhoto[] }) {
   )
 }
 
-function PhotoPicker({
+function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: T
+  options: { value: T; label: string; disabled?: boolean }[]
+  onChange: (value: T) => void
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label={label}
+      className="flex rounded-[12px] bg-muted p-0.5 sm:w-fit"
+    >
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          role="radio"
+          aria-checked={value === option.value}
+          disabled={option.disabled}
+          onClick={() => onChange(option.value)}
+          className={cn(
+            'min-h-9 flex-1 rounded-[10px] px-3 text-[13.5px] font-medium whitespace-nowrap transition-colors disabled:opacity-40 sm:flex-none',
+            value === option.value
+              ? 'bg-card text-foreground shadow-sm dark:bg-white/10'
+              : 'text-muted-foreground enabled:hover:text-foreground',
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function ShotPicker({
   id,
   label,
   value,
-  photos,
+  shots,
   onChange,
 }: {
   id: string
   label: string
   value: number
-  photos: ProgressPhoto[]
+  shots: Shot[]
   onChange: (id: number) => void
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-2">
-      <Label htmlFor={`compare-${id}`}>{label}</Label>
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <Label htmlFor={`compare-${id}`} className="text-muted-foreground">
+        {label}
+      </Label>
       <Select value={String(value)} onValueChange={(next) => onChange(Number(next))}>
-        <SelectTrigger id={`compare-${id}`} className="min-w-0">
+        <SelectTrigger id={`compare-${id}`} className="w-full min-w-0">
           <SelectValue />
         </SelectTrigger>
         <SelectContent position="popper" className="max-h-72">
-          {photos.map((photo) => (
-            <SelectItem key={photo.id} value={String(photo.id)}>
-              {describe(photo)}
+          {shots.map((shot) => (
+            <SelectItem key={shot.id} value={String(shot.id)}>
+              {shortDay(shot.taken_on)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -194,8 +252,8 @@ export function CompareSlider({
   after,
   version = '',
 }: {
-  before: ProgressPhoto
-  after: ProgressPhoto
+  before: Shot
+  after: Shot
   version?: string
 }) {
   const [position, setPosition] = useState(50)
@@ -262,8 +320,8 @@ export function CompareSlider({
           draggable={false}
           style={{ clipPath: `inset(0 ${100 - position}% 0 0)` }}
         />
-        <span className="compare-label left-3">До · {formatDay(before.taken_on, 'd MMM')}</span>
-        <span className="compare-label right-3">После · {formatDay(after.taken_on, 'd MMM')}</span>
+        <span className="compare-label left-3">До, {formatDay(before.taken_on, 'd MMM')}</span>
+        <span className="compare-label right-3">После, {formatDay(after.taken_on, 'd MMM')}</span>
         <span className="compare-divider" style={{ left: `${position}%` }} aria-hidden="true" />
         <div
           role="slider"

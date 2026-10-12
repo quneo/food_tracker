@@ -704,6 +704,112 @@
   background: linear-gradient(140deg, #2c3a2f, #3a2a33);
 }
 
+/* Progress album: a frosted page per month; a thin line runs through its days, a dot at
+   each date. Photos keep a steady size on wide screens instead of stretching. */
+.album-month {
+  border-radius: 24px;
+  padding: 18px 16px 8px;
+}
+.album-month-title {
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  margin: 0 0 6px 4px;
+}
+.album-month-title::first-letter {
+  text-transform: uppercase;
+}
+.album-days {
+  position: relative;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.album-days::before {
+  content: '';
+  position: absolute;
+  top: 22px;
+  bottom: 22px;
+  left: 8px;
+  width: 1.5px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.album-day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 6px 14px 28px;
+  border-radius: 18px;
+  text-align: left;
+  transition: background 0.15s;
+}
+.album-day:hover {
+  background: color-mix(in srgb, var(--card) 60%, transparent);
+}
+.album-day:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.album-day::before {
+  content: '';
+  position: absolute;
+  top: 19px;
+  left: 4.5px;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--card) 85%, transparent);
+}
+.album-day-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.album-day-date {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 600;
+}
+.album-shots {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.album-shot {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+.album-shot-pose {
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+}
+.album-note {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1.45;
+}
+@media (min-width: 480px) {
+  .album-shots {
+    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  }
+}
+@media (min-width: 768px) {
+  .album-month {
+    padding: 22px 22px 10px;
+  }
+  .album-shots {
+    grid-template-columns: repeat(auto-fill, 150px);
+  }
+}
+
 /* The diary as a conversation: date pills, meal bubbles, a short service line per day. */
 .chat-column {
   width: 100%;

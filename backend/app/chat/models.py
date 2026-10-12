@@ -85,7 +85,8 @@ class PendingAction(Base):
 class OutboxMessage(Base):
     """A message for the bot to deliver: assistant replies and reminders.
 
-    payload: {"text": html, "buttons": [[{"text", "data"|"url"}]], "edit_message_id": int?}
+    payload: {"text": html, "buttons": [[{"text", "data"|"url"|"web_app"}]],
+              "keyboard": [[label]]?, "edit_message_id": int?}
     """
 
     __tablename__ = "outbox"

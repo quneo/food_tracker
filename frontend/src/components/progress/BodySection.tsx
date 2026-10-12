@@ -54,8 +54,8 @@ const SOURCE: Record<string, string> = { bot: 'из бота', web: '' }
 export function BodySection() {
   return (
     <div className="flex flex-col gap-4">
-      <WeightBlock />
       <MeasurementsBlock />
+      <WeightBlock />
     </div>
   )
 }
@@ -121,7 +121,7 @@ function WeightBlock() {
     title: dateTimeLabel(entry.measured_at, today),
     value: entry.weight_kg,
   }))
-  const shown = all ? list : list.slice(0, 8)
+  const shown = all ? list : list.slice(0, 5)
   const first = list[list.length - 1]
   const latest = list[0]
   return (
@@ -130,7 +130,7 @@ function WeightBlock() {
         <CardTitle>Вес</CardTitle>
         <CardDescription>
           {latest && first && latest.id !== first.id
-            ? `${num(first.weight_kg, 1)} → ${num(latest.weight_kg, 1)} кг (${signed(latest.weight_kg - first.weight_kg)}) с ${formatDay(first.measured_on, 'd MMM yyyy')}`
+            ? `${num(latest.weight_kg, 1)} кг, ${signed(latest.weight_kg - first.weight_kg)} с ${formatDay(first.measured_on, 'd MMMM')}`
             : 'Все взвешивания'}
         </CardDescription>
         <CardAction>
@@ -183,7 +183,7 @@ function WeightBlock() {
                   </li>
                 ))}
               </ul>
-              {list.length > 8 && (
+              {list.length > 5 && (
                 <Button variant="ghost" className="self-center" onClick={() => setAll(!all)}>
                   {all ? 'Свернуть' : `Показать все (${list.length})`}
                 </Button>

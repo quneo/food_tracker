@@ -22,6 +22,7 @@ from app.media.models import Media
 from app.media.storage import Storage
 from app.nutrition import service as nutrition
 from app.nutrition.models import Meal
+from app.progress import daily
 from app.progress import service as progress
 from app.progress.models import MEASUREMENTS
 from app.reminders import service as reminders
@@ -248,9 +249,7 @@ def ask_measurements(db: Session, user: User) -> dict:
 
 
 def more_view() -> dict:
-    rows = site_row("🌐 Дневник на сайте") + site_row(
-        "⏰ Напоминания", "/profile?section=reminders"
-    )
+    rows = site_row("🌐 Открыть дневник") + site_row("⏰ Напоминания", "/profile?section=reminders")
     rows.append([views.button("❓ Как пользоваться", "h:help")])
     return view("⚙️ <b>Еще</b>", rows)
 
@@ -320,8 +319,9 @@ def parse_measurements(text: str) -> dict[str, float] | None:
 
 
 def _save_weight(db: Session, user: User, value: float, session_id: int | None) -> dict:
-    entry = progress.add_weight(db, user, value, source="bot")
-    db.flush()
+    entry, ask = daily.weight(db, user, value)
+    if ask:
+        return _answer(db, user, daily.replace_view(ask), session_id)
     change = progress.weight_change(db, user, 7)
     tail = f" ({'+' if change > 0 else ''}{views.n(change, 1)} за неделю)" if change else ""
     reply = f"⚖️ Записал вес: {views.n(entry.weight_kg, 1)} кг{tail}"
@@ -331,29 +331,34 @@ def _save_weight(db: Session, user: User, value: float, session_id: int | None) 
 def _save_measurements(
     db: Session, user: User, values: dict[str, float], session_id: int | None
 ) -> dict:
-    entries = []
-    for kind, value in values.items():
-        try:
-            entries.append(progress.add_measurement(db, user, kind, value, source="bot"))
-        except DomainError:
-            continue
-    if not entries:
+    try:
+        entries, ask = daily.measurements(db, user, values)
+    except DomainError:
         return _answer(db, user, view("Не похоже на замеры: проверьте числа."), session_id)
+    if not entries:
+        return _answer(db, user, daily.replace_view(ask), session_id)
     saved = ", ".join(
         f"{MEASUREMENTS[e.kind][0].lower()} {views.n(e.value, 1)}"
         f"{'%' if e.kind == 'body_fat' else ' см'}"
         for e in entries
     )
     created = [["measurement", e.id] for e in entries]
-    return _answer(db, user, _with_undo(db, user, f"📏 Записал: {saved}", created), session_id)
+    answer = _with_undo(db, user, f"📏 Записал: {saved}", created)
+    if ask:
+        # The new ones are saved; the ones already there wait for an answer.
+        question = daily.replace_view(ask)
+        answer = view(
+            f"{answer['text']}\n\n{question['text']}", question["buttons"] + answer["buttons"]
+        )
+    return _answer(db, user, answer, session_id)
 
 
 def _save_progress(db: Session, user: User, saved: list[Media], text: str, session_id) -> dict:
     note = PROGRESS_WORDS.sub("", text).strip(" ,.:-—") or None
-    created = [
-        ["progress_photo", progress.make_progress_photo(db, user, item, pose=pose, note=note).id]
-        for item, pose in zip(saved, progress.poses_for(len(saved)), strict=True)
-    ]
+    records, ask = daily.progress_photos(db, user, saved, note)
+    if ask:
+        return _answer(db, user, daily.replace_view(ask, add=True), session_id)
+    created = [["progress_photo", record.id] for record in records]
     count = f" ({len(saved)} шт.)" if len(saved) > 1 else ""
     return _answer(
         db, user, _with_undo(db, user, f"📸 Сохранил фото прогресса{count}", created), session_id
@@ -640,7 +645,7 @@ def _press(db: Session, user: User, parts: list[str], message_id: int | None) ->
             db.commit()
             result["view"] = view(f"{escape(action.summary)}\n\n✖️ Хорошо, ничего не меняю.")
             return result
-        done = execute_pending(db, user, action)
+        done = execute_pending(db, user, action, parts[1] if head == "a" else "y")
         action.status = "done"
         db.commit()
         if head == "u":

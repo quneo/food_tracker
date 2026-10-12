@@ -52,8 +52,13 @@ def button(text: str, data: str) -> dict:
 
 
 def site_button(text: str, path: str) -> dict | None:
+    """Opens the diary. Over https it opens inside Telegram as a Mini App, signed in by
+    Telegram itself; only people who use the bot ever see these buttons."""
     base = get_settings().app_url
-    return {"text": text, "url": f"{base}{path}"} if base else None
+    if not base:
+        return None
+    key = "web_app" if base.startswith("https://") else "url"
+    return {"text": text, key: f"{base}{path}"}
 
 
 def grams(item) -> str:

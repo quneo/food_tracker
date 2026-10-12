@@ -132,3 +132,14 @@ async def test_typing_is_shown_while_the_assistant_works():
         (7, "typing"),
         (8, "typing"),
     }
+
+
+def test_diary_opens_inside_telegram():
+    keyboard = render.markup(
+        {
+            "text": "x",
+            "buttons": [[{"text": "🌐 Открыть дневник", "web_app": "https://food.example.com/"}]],
+        }
+    )
+    button = keyboard.inline_keyboard[0][0]
+    assert button.web_app.url == "https://food.example.com/" and button.url is None

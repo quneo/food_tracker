@@ -44,6 +44,7 @@ from app.nutrition import products as product_store
 from app.nutrition import service as nutrition
 from app.nutrition.models import Meal, Product
 from app.nutrition.schemas import MealItemIn, ProductIn
+from app.progress import daily
 from app.progress import service as progress
 from app.progress.models import MEASUREMENTS, Measurement, ProgressPhoto, WeightEntry
 from app.reminders import service as reminders
@@ -248,9 +249,13 @@ class Executor:
     # Body
 
     def log_weight(self, action: LogWeight):
-        entry = progress.add_weight(
-            self.db, self.user, action.weight_kg, parse_local(action.measured_at), source="bot"
+        # One weight a day: a second one asks whether to replace the first.
+        entry, ask = daily.weight(
+            self.db, self.user, action.weight_kg, parse_local(action.measured_at)
         )
+        if ask:
+            self.out.cards.append(daily.replace_view(ask))
+            return
         self.out.notes.append(f"⚖️ Записал вес: {views.n(entry.weight_kg, 1)} кг")
         self.out.created.append(["weight", entry.id])
 
@@ -267,29 +272,33 @@ class Executor:
 
     def log_measurements(self, action: LogMeasurements):
         when = parse_local(action.measured_at)
+        values = {value.kind: value.value for value in action.values}
+        entries, ask = daily.measurements(self.db, self.user, values, when)
         saved = []
-        for value in action.values:
-            entry = progress.add_measurement(
-                self.db, self.user, value.kind, value.value, when, source="bot"
-            )
+        for entry in entries:
             self.out.created.append(["measurement", entry.id])
             name, unit = MEASUREMENTS[entry.kind]
             saved.append(f"{name.lower()} {views.n(entry.value, 1)} {'%' if unit == '%' else 'см'}")
         if saved:
             self.out.notes.append("📏 Записал замеры: " + ", ".join(saved))
+        if ask:
+            self.out.cards.append(daily.replace_view(ask))
 
     def save_progress_photo(self, action: SaveProgressPhoto):
         if not self.photos:
             raise DomainError("в сообщении нет фото")
-        # Several photos are one entry: front, back, side unless told otherwise.
-        poses = progress.poses_for(len(self.photos), action.pose)
-        for photo, pose in zip(self.photos, poses, strict=True):
-            record = progress.make_progress_photo(
-                self.db, self.user, photo, pose=pose, note=action.note
-            )
-            self.out.created.append(["progress_photo", record.id])
-        count = len(self.photos)
+        # Several photos are one entry: front, back, side unless told otherwise. A day
+        # that already has photos asks first.
+        records, ask = daily.progress_photos(
+            self.db, self.user, list(self.photos), action.note, action.pose
+        )
         self.photos = []
+        if ask:
+            self.out.cards.append(daily.replace_view(ask, add=True))
+            return
+        for record in records:
+            self.out.created.append(["progress_photo", record.id])
+        count = len(records)
         self.out.notes.append(
             "📸 Сохранил фото прогресса" + (f" ({count} шт.)" if count > 1 else "")
         )
@@ -472,9 +481,11 @@ UNDO_MODELS = {
 }
 
 
-def execute_pending(db: Session, user: User, action: PendingAction) -> str:
+def execute_pending(db: Session, user: User, action: PendingAction, choice: str = "y") -> str:
     """Runs a confirmed action; returns what was done."""
     payload = action.payload
+    if action.kind.startswith("replace_"):
+        return daily.apply(db, user, action, choice)
     if action.kind == "update_meal":
         meal = db.get(Meal, payload["meal_id"])
         if not meal or meal.user_id != user.id:

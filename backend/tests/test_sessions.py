@@ -82,31 +82,68 @@ def test_a_quick_row_is_answered_at_once(person, runner, worker):
 
 def test_numbers_are_recorded_without_the_assistant(person, runner, worker):
     assert "Записал вес: 82,4" in person.say("82,4").json()["view"]["text"]
-    asked = person.say(chat_sessions.WEIGHT).json()["view"]
-    assert "Пришлите вес" in asked["text"]
-    assert "Записал вес: 81" in person.say("81").json()["view"]["text"]
-    person.say(chat_sessions.WEIGHT)
-    assert "Не похоже на вес" in person.say("8l,2").json()["view"]["text"]
-    assert "Записал вес: 81,2" in person.say("81,2").json()["view"]["text"]
-    person.say(chat_sessions.WEIGHT)
-    assert "Сессия не начата" in person.say("а что на ужин?").json()["view"]["text"]
     saved = person.say("талия 82, бедра 98,5").json()["view"]["text"]
     assert "талия 82 см" in saved and "бедра 98,5 см" in saved
     # A question that mentions a measurement is not a measurement.
     assert "Сессия не начата" in person.say("талия 82 это нормально?").json()["view"]["text"]
+    # After "⚖️ Вес": a typo with digits asks again, words mean the person moved on.
+    assert "Пришлите вес" in person.say(chat_sessions.WEIGHT).json()["view"]["text"]
+    assert "Не похоже на вес" in person.say("8l,2").json()["view"]["text"]
+    person.say(chat_sessions.WEIGHT)
+    assert "Сессия не начата" in person.say("а что на ужин?").json()["view"]["text"]
 
     # Inside a session too, and the assistant does not see them as new messages.
     person.start_session()
-    person.say("вес 80,5")
+    person.say("грудь 101")
     runner.answers.append(OK)
-    person.say("как дела с весом?")
+    person.say("как дела с замерами?")
     drain(worker)
-    prompt = runner.calls[0]["prompt"]
-    assert (
-        "## Новое сообщение пользователя" in prompt
-        and "вес 80,5" not in prompt.split("## Новое сообщение")[1]
+    new = runner.calls[0]["prompt"].split("## Новое сообщение")[1]
+    assert "как дела с замерами?" in new and "грудь 101" not in new
+
+
+def test_once_a_day(person, runner, worker, sessions):
+    person.say("82,4")
+    person.say(chat_sessions.WEIGHT)
+    asked = person.say("81").json()["view"]
+    assert asked["text"].startswith("❓ Вес сегодня уже записан: 82,4 кг")
+    replace, keep = asked["buttons"][0][0]["data"], asked["buttons"][1][0]["data"]
+    assert replace.startswith("a:y:") and keep.startswith("a:n:")
+    assert "Вес заменен: 81 кг" in person.press(replace)["view"]["text"]
+    assert [w["weight_kg"] for w in person.web.get("/api/weights").json()] == [81]
+
+    person.say("талия 82, бедра 98")
+    mixed = person.say("талия 81, грудь 100").json()["view"]
+    assert "Записал: грудь 100 см" in mixed["text"]
+    assert "заменить талия 82 → 81 см" in mixed["text"]
+    assert "ничего не меняю" in person.press(mixed["buttons"][1][0]["data"])["view"]["text"]
+    waist = [m for m in person.web.get("/api/measurements").json() if m["kind"] == "waist"]
+    assert [m["value"] for m in waist] == [82]
+
+    person.say("прогресс", photos=[jpeg(), jpeg()])
+    again = person.say("прогресс", photos=[jpeg()]).json()["view"]
+    assert "уже есть (2)" in again["text"]
+    assert again["buttons"][0][1]["data"].startswith("a:add:")
+    assert "Добавил" in person.press(again["buttons"][0][1]["data"])["view"]["text"]
+    [entry] = person.web.get("/api/progress-entries").json()
+    assert sorted(p["pose"] for p in entry["photos"]) == ["back", "front", "side"]
+    third = person.say("прогресс", photos=[jpeg()]).json()["view"]
+    assert "Фото заменены" in person.press(third["buttons"][0][0]["data"])["view"]["text"]
+    [entry] = person.web.get("/api/progress-entries").json()
+    assert [p["pose"] for p in entry["photos"]] == ["front"]
+
+    # The assistant follows the same rule.
+    person.start_session()
+    runner.answers.append(
+        {"reply": "", "actions": [{"kind": "log_weight", "weight_kg": 80.5, "measured_at": None}]}
     )
-    assert len(person.web.get("/api/weights").json()) == 4
+    person.say("взвесился, 80,5 вроде")
+    drain(worker)
+    with sessions() as db:
+        card = db.scalars(select(OutboxMessage)).all()[-1].payload
+        assert "Вес сегодня уже записан: 81 кг" in card["text"]
+        assert card["buttons"][0][0]["text"] == "🔁 Заменить"
+    assert len(person.web.get("/api/weights").json()) == 1
 
 
 def test_ending_a_session_sums_it_up(person, runner, worker):
@@ -165,3 +202,13 @@ def test_people_get_the_new_keyboard_once(person, sessions):
             m for m in db.scalars(select(OutboxMessage)) if "Бот обновился" in m.payload["text"]
         ]
         assert len(notes) == 1 and notes[0].payload["keyboard"][0][0] == chat_sessions.NEW
+
+
+def test_the_diary_opens_inside_telegram(person):
+    more = person.say(chat_sessions.MORE).json()["view"]
+    assert more["buttons"][0][0] == {
+        "text": "🌐 Открыть дневник",
+        "web_app": "https://food.example.com/",
+    }
+    today = person.say(chat_sessions.TODAY).json()["view"]
+    assert today["buttons"][0][0]["web_app"].startswith("https://food.example.com")

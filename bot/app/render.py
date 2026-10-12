@@ -11,6 +11,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     KeyboardButton,
     ReplyKeyboardMarkup,
+    WebAppInfo,
 )
 
 LIMIT = 4096
@@ -30,7 +31,14 @@ def markup(view: dict) -> InlineKeyboardMarkup | ReplyKeyboardMarkup | None:
         for button in row:
             if not button:
                 continue
-            if button.get("url"):
+            if button.get("web_app"):
+                # The diary inside Telegram, signed in with the Mini App data.
+                buttons.append(
+                    InlineKeyboardButton(
+                        text=button["text"], web_app=WebAppInfo(url=button["web_app"])
+                    )
+                )
+            elif button.get("url"):
                 buttons.append(InlineKeyboardButton(text=button["text"], url=button["url"]))
             else:
                 buttons.append(

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Lock, LockOpen } from 'lucide-react'
+import { toast } from 'sonner'
 import { photoLockApi } from '@/api/endpoints'
 import { keys } from '@/api/keys'
 import { usePhotoLock } from '@/hooks/usePhotoLock'
@@ -10,59 +11,71 @@ import { Input } from '@/components/ui/input'
 import { ResponsiveSheet } from '@/components/shared/ResponsiveSheet'
 import { timeOfInstant } from '@/lib/format'
 
-/** Above the photos: hidden behind the code, or open until a moment. */
-export function PhotoLockBar() {
+/** In the page header: a closed lock shows the photos (after the code), an open one hides
+ * them again. Nothing when no code is set. */
+export function PhotoLockButton() {
   const client = useQueryClient()
   const { lock, hidden } = usePhotoLock()
   const [asking, setAsking] = useState(false)
   const close = useMutation({
     mutationFn: () => photoLockApi.lock(),
-    onSuccess: (state) => client.setQueryData(keys.photoLock, state),
+    onSuccess: (state) => {
+      client.setQueryData(keys.photoLock, state)
+      toast.success('Фото скрыты')
+    },
   })
-
-  if (!lock) return null
-  if (!lock.enabled)
-    return (
-      <p className="text-sm text-muted-foreground">
-        Фото видны всем, кто откроет дневник.{' '}
-        <Link
-          to="/profile?section=account"
-          className="font-medium text-primary underline-offset-4 hover:underline"
-        >
-          Задать код
-        </Link>
-      </p>
-    )
+  if (!lock?.enabled) return null
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] glass px-4 py-3">
-      <p className="flex items-center gap-2.5 text-sm">
-        {hidden ? (
-          <Lock className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        ) : (
-          <LockOpen className="size-4 shrink-0 text-primary" aria-hidden="true" />
-        )}
-        {hidden
-          ? 'Фото скрыты кодом'
-          : `Фото открыты до ${lock.unlocked_until ? timeOfInstant(lock.unlocked_until) : ''}`}
-      </p>
+    <>
       {hidden ? (
-        <Button size="sm" onClick={() => setAsking(true)}>
-          Показать
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setAsking(true)}
+          aria-label="Показать фото"
+          title="Показать фото"
+        >
+          <Lock />
         </Button>
       ) : (
         <Button
-          size="sm"
           variant="outline"
+          size="icon"
           onClick={() => close.mutate()}
           disabled={close.isPending}
+          aria-label={`Скрыть фото (открыты до ${lock.unlocked_until ? timeOfInstant(lock.unlocked_until) : ''})`}
+          title="Скрыть фото"
+          className="text-primary"
         >
-          Скрыть
+          <LockOpen />
         </Button>
       )}
-      <ResponsiveSheet open={asking} onOpenChange={setAsking} title="Код для фото">
-        {asking && <UnlockForm onDone={() => setAsking(false)} />}
-      </ResponsiveSheet>
-    </div>
+      <PinSheet open={asking} onOpenChange={setAsking} />
+    </>
+  )
+}
+
+/** Asks for the photo code; `onUnlocked` runs after it opens the photos. */
+export function PinSheet({
+  open,
+  onOpenChange,
+  onUnlocked,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onUnlocked?: () => void
+}) {
+  return (
+    <ResponsiveSheet open={open} onOpenChange={onOpenChange} title="Код для фото">
+      {open && (
+        <UnlockForm
+          onDone={() => {
+            onOpenChange(false)
+            onUnlocked?.()
+          }}
+        />
+      )}
+    </ResponsiveSheet>
   )
 }
 
@@ -75,6 +88,11 @@ function UnlockForm({ onDone }: { onDone: () => void }) {
     onMutate: () => setError(''),
     onSuccess: (state) => {
       client.setQueryData(keys.photoLock, state)
+      toast.success(
+        state.unlocked_until
+          ? `Фото открыты до ${timeOfInstant(state.unlocked_until)}`
+          : 'Фото открыты',
+      )
       onDone()
     },
     onError: (e) => {
@@ -114,5 +132,22 @@ function UnlockForm({ onDone }: { onDone: () => void }) {
         Фото откроются на 15 минут в этом браузере.
       </p>
     </form>
+  )
+}
+
+/** Under the album while no code is set. */
+export function LockHint() {
+  const { lock } = usePhotoLock()
+  if (!lock || lock.enabled) return null
+  return (
+    <p className="px-1 text-sm text-muted-foreground">
+      Фото видны всем, кто откроет дневник.{' '}
+      <Link
+        to="/profile?section=account"
+        className="font-medium text-primary underline-offset-4 hover:underline"
+      >
+        Задать код
+      </Link>
+    </p>
   )
 }

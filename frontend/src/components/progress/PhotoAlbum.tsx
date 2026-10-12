@@ -19,6 +19,7 @@ import { POSES, poseLabel } from '@/lib/labels'
 import { formatDay, num, todayIn } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { PHOTO_TYPES } from '@/components/meals/MealPhotos'
+import { LockHint, PinSheet } from './PhotoLock'
 import type { Pose, ProgressEntry } from '@/types'
 
 const MAX_FILES = 6
@@ -28,10 +29,17 @@ const nextPoses = (count: number, taken: Pose[] = []): Pose[] => {
   return Array.from({ length: count }, (_, index) => free[index] ?? 'other')
 }
 
-export function PhotoAlbum({ entries }: { entries: ProgressEntry[] }) {
+export function PhotoAlbum({
+  entries,
+  onCreate,
+}: {
+  entries: ProgressEntry[]
+  onCreate: () => void
+}) {
   const { version, hidden } = usePhotoLock()
-  const [creating, setCreating] = useState(false)
   const [openId, setOpenId] = useState<number | null>(null)
+  // Hidden photos ask for the code first, then the entry opens.
+  const [askingFor, setAskingFor] = useState<number | null>(null)
   const months = useMemo(() => {
     const groups = new Map<string, ProgressEntry[]>()
     for (const entry of entries) {
@@ -42,46 +50,51 @@ export function PhotoAlbum({ entries }: { entries: ProgressEntry[] }) {
   }, [entries])
   const opened = entries.find((entry) => entry.id === openId) ?? null
 
-  return (
-    <div className="flex flex-col gap-5">
-      <div className="flex justify-end">
-        <Button onClick={() => setCreating(true)}>
-          <ImagePlus />
-          Новая запись
-        </Button>
-      </div>
-
-      {!entries.length ? (
+  if (!entries.length)
+    return (
+      <div className="flex flex-col gap-4">
         <EmptyState
           icon={Camera}
           title="Фото прогресса пока нет"
           description="Снимайте себя раз в неделю-две при похожем свете: спереди, сбоку, сзади. Можно прислать фото боту с подписью «прогресс»."
-        />
-      ) : (
-        months.map(([month, list]) => (
-          <section key={month} aria-labelledby={`month-${month}`} className="flex flex-col gap-3">
-            <h2 id={`month-${month}`} className="section-title first-letter:uppercase">
-              {formatDay(`${month}-01`, 'LLLL yyyy')}
-            </h2>
-            <ul className="grid gap-3 lg:grid-cols-2">
-              {list.map((entry) => (
-                <li key={entry.id}>
-                  <EntryCard
-                    entry={entry}
-                    version={version}
-                    hidden={hidden}
-                    onOpen={() => setOpenId(entry.id)}
-                  />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))
-      )}
+        >
+          <Button onClick={onCreate}>
+            <ImagePlus />
+            Новая запись
+          </Button>
+        </EmptyState>
+        <LockHint />
+      </div>
+    )
 
-      <ResponsiveSheet open={creating} onOpenChange={setCreating} title="Новая запись" wide>
-        {creating && <UploadForm onDone={() => setCreating(false)} />}
-      </ResponsiveSheet>
+  return (
+    <div className="flex flex-col gap-4">
+      {months.map(([month, list]) => (
+        <section key={month} aria-labelledby={`month-${month}`} className="album-month glass">
+          <h2 id={`month-${month}`} className="album-month-title">
+            {formatDay(`${month}-01`, 'LLLL yyyy')}
+          </h2>
+          <ol className="album-days">
+            {list.map((entry) => (
+              <li key={entry.id}>
+                <AlbumDay
+                  entry={entry}
+                  version={version}
+                  hidden={hidden}
+                  onOpen={() => (hidden ? setAskingFor(entry.id) : setOpenId(entry.id))}
+                />
+              </li>
+            ))}
+          </ol>
+        </section>
+      ))}
+      <LockHint />
+
+      <PinSheet
+        open={askingFor !== null}
+        onOpenChange={(value) => !value && setAskingFor(null)}
+        onUnlocked={() => setOpenId(askingFor)}
+      />
       <ResponsiveSheet
         open={opened !== null}
         onOpenChange={(value) => !value && setOpenId(null)}
@@ -106,7 +119,22 @@ export function PhotoAlbum({ entries }: { entries: ProgressEntry[] }) {
   )
 }
 
-function EntryCard({
+export function NewEntrySheet({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  return (
+    <ResponsiveSheet open={open} onOpenChange={onOpenChange} title="Новая запись" wide>
+      {open && <UploadForm onDone={() => onOpenChange(false)} />}
+    </ResponsiveSheet>
+  )
+}
+
+/** One day on the album's line: the date and weight, then that day's photos side by side. */
+function AlbumDay({
   entry,
   version,
   hidden,
@@ -118,52 +146,44 @@ function EntryCard({
   onOpen: () => void
 }) {
   const shown = entry.photos.slice(0, 4)
+  const day = formatDay(entry.taken_on, 'd MMMM')
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group flex w-full flex-col gap-3 rounded-[20px] glass p-3 text-left transition-colors hover:bg-card"
-    >
-      <span className="flex items-baseline justify-between gap-3 px-1">
-        <span className="font-semibold">{formatDay(entry.taken_on, 'd MMMM')}</span>
+    <button type="button" onClick={onOpen} className="album-day" aria-label={`${day}: открыть`}>
+      <span className="album-day-head">
+        <span className="album-day-date">{day}</span>
         {entry.weight_kg !== null && (
-          <span className="serif-number text-sm text-muted-foreground">
+          <span className="serif-number text-[15px] text-muted-foreground">
             {num(entry.weight_kg, 1)} кг
           </span>
         )}
       </span>
-      <span
-        className="grid gap-2"
-        style={{ gridTemplateColumns: `repeat(${Math.max(shown.length, 2)}, minmax(0, 1fr))` }}
-      >
-        {shown.map((photo) => (
-          <span key={photo.id} className="relative flex flex-col gap-1">
-            <Photo
-              id={photo.media_id}
-              alt={`${poseLabel(photo.pose)}, ${formatDay(entry.taken_on, 'd MMMM yyyy')}`}
-              className="aspect-[3/4] w-full rounded-[14px]"
-              version={version}
-            />
-            {hidden && (
-              <Lock
-                className="absolute top-2 right-2 size-4 text-white/85 drop-shadow"
-                aria-hidden="true"
+      <span className="album-shots">
+        {shown.map((photo, index) => (
+          <span key={photo.id} className="album-shot">
+            <span className="relative block">
+              <Photo
+                id={photo.media_id}
+                alt={`${poseLabel(photo.pose)}, ${formatDay(entry.taken_on, 'd MMMM yyyy')}`}
+                className="aspect-[3/4] w-full rounded-[14px]"
+                version={version}
               />
-            )}
-            <span className="text-center text-xs text-muted-foreground">
-              {poseLabel(photo.pose)}
+              {hidden && (
+                <Lock
+                  className="absolute top-2 right-2 size-4 text-white/85 drop-shadow"
+                  aria-hidden="true"
+                />
+              )}
+              {index === 3 && entry.photos.length > 4 && (
+                <span className="absolute inset-0 grid place-items-center rounded-[14px] bg-black/45 text-lg font-medium text-white">
+                  +{entry.photos.length - 4}
+                </span>
+              )}
             </span>
+            <span className="album-shot-pose">{poseLabel(photo.pose)}</span>
           </span>
         ))}
       </span>
-      {entry.photos.length > shown.length && (
-        <span className="px-1 text-xs text-muted-foreground">
-          И еще {entry.photos.length - shown.length}
-        </span>
-      )}
-      {entry.note && (
-        <span className="line-clamp-2 px-1 text-sm text-muted-foreground">{entry.note}</span>
-      )}
+      {entry.note && <span className="album-note">{entry.note}</span>}
     </button>
   )
 }
@@ -478,20 +498,19 @@ function EntryForm({
             />
           </div>
         ))}
-        {entry.photos.length < MAX_FILES && (
-          <button
-            type="button"
-            onClick={() => input.current?.click()}
-            disabled={addPhotos.isPending}
-            className="grid aspect-[3/4] place-items-center rounded-[14px] border border-dashed bg-muted text-muted-foreground"
-          >
-            <span className="flex flex-col items-center gap-2 text-sm">
-              <ImagePlus className="size-6" />
-              {addPhotos.isPending ? 'Загрузка…' : 'Добавить'}
-            </span>
-          </button>
-        )}
       </div>
+      {entry.photos.length < MAX_FILES && (
+        <Button
+          type="button"
+          variant="outline"
+          className="self-start"
+          onClick={() => input.current?.click()}
+          disabled={addPhotos.isPending}
+        >
+          <ImagePlus />
+          {addPhotos.isPending ? 'Загрузка…' : 'Добавить фото'}
+        </Button>
+      )}
       <input
         ref={input}
         type="file"
