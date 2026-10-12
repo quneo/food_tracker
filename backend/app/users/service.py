@@ -244,6 +244,14 @@ def session_user(db: Session, token: str | None) -> User | None:
     return user
 
 
+def session_of(db: Session, token: str | None) -> WebSession | None:
+    """The browser session behind a cookie, if it is still valid."""
+    if not token:
+        return None
+    session = db.scalar(select(WebSession).where(WebSession.token_hash == token_hash(token)))
+    return session if session and session.expires_at > utcnow() else None
+
+
 def end_session(db: Session, token: str | None):
     if token:
         session = db.scalar(select(WebSession).where(WebSession.token_hash == token_hash(token)))

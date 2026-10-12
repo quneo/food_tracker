@@ -1,5 +1,6 @@
 import { useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
+import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { bodyApi } from '@/api/endpoints'
 import { keys } from '@/api/keys'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -8,6 +9,7 @@ import { BlockSkeleton, ErrorState } from '@/components/shared/States'
 import { PhotoAlbum } from '@/components/progress/PhotoAlbum'
 import { CompareView } from '@/components/progress/CompareView'
 import { BodySection } from '@/components/progress/BodySection'
+import { PhotoLockBar } from '@/components/progress/PhotoLockBar'
 
 const TABS = [
   { value: 'photos', label: 'Фото' },
@@ -21,16 +23,23 @@ export default function ProgressPage() {
   const photos = useQuery({
     queryKey: keys.photos,
     queryFn: ({ signal }) => bodyApi.photos({ signal }),
+    enabled: tab === 'compare',
+  })
+  const entries = useQuery({
+    queryKey: keys.entries,
+    queryFn: ({ signal }) => bodyApi.entries({ signal }),
+    enabled: tab === 'photos',
   })
 
-  const gallery = (render: (list: NonNullable<typeof photos.data>) => React.ReactNode) =>
-    photos.isPending ? (
+  function loaded<T>(result: UseQueryResult<T>, render: (data: T) => ReactNode) {
+    return result.isPending ? (
       <BlockSkeleton rows={3} />
-    ) : photos.isError ? (
-      <ErrorState error={photos.error} retry={() => photos.refetch()} />
+    ) : result.isError ? (
+      <ErrorState error={result.error} retry={() => result.refetch()} />
     ) : (
-      render(photos.data)
+      render(result.data)
     )
+  }
 
   return (
     <>
@@ -51,13 +60,14 @@ export default function ProgressPage() {
             </TabsTrigger>
           ))}
         </TabsList>
+        {tab !== 'body' && <PhotoLockBar />}
         <TabsContent value="photos">
-          {gallery((list) => (
-            <PhotoAlbum photos={list} />
+          {loaded(entries, (list) => (
+            <PhotoAlbum entries={list} />
           ))}
         </TabsContent>
         <TabsContent value="compare">
-          {gallery((list) => (
+          {loaded(photos, (list) => (
             <CompareView photos={list} />
           ))}
         </TabsContent>

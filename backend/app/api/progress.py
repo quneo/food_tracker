@@ -3,14 +3,15 @@ from datetime import date
 from fastapi import APIRouter, BackgroundTasks, File, Form, Response, UploadFile
 
 from app.api.deps import CurrentUser, Db, Files, purge_later
-from app.core.exceptions import DomainError
-from app.core.timeutil import local_today, zone
 from app.progress import service
 from app.progress.schemas import (
+    EntryPatch,
     MeasurementIn,
     MeasurementOut,
+    MeasurementsIn,
     PhotoPatch,
     Pose,
+    ProgressEntryOut,
     ProgressPhotoOut,
     WeightIn,
     WeightOut,
@@ -69,6 +70,13 @@ def add_measurement(data: MeasurementIn, user: CurrentUser, db: Db):
     return service.measurement_out(entry, user)
 
 
+@router.post("/measurements/batch", response_model=list[MeasurementOut], status_code=201)
+def add_measurements(data: MeasurementsIn, user: CurrentUser, db: Db):
+    entries = service.add_measurements(db, user, data.values, data.measured_at, data.note)
+    db.commit()
+    return [service.measurement_out(entry, user) for entry in entries]
+
+
 @router.put("/measurements/{entry_id}", response_model=MeasurementOut)
 def update_measurement(entry_id: int, data: MeasurementIn, user: CurrentUser, db: Db):
     entry = service.owned_measurement(db, entry_id, user.id)
@@ -84,7 +92,30 @@ def delete_measurement(entry_id: int, user: CurrentUser, db: Db):
     return Response(status_code=204)
 
 
-# Progress photos
+# Progress photos: entries by day, each with its photos
+
+
+@router.get("/progress-entries", response_model=list[ProgressEntryOut])
+def list_entries(user: CurrentUser, db: Db):
+    return [service.entry_out(db, entry) for entry in service.entries(db, user.id)]
+
+
+@router.patch("/progress-entries/{entry_id}", response_model=ProgressEntryOut)
+def update_entry(entry_id: int, data: EntryPatch, user: CurrentUser, db: Db):
+    entry = service.owned_entry(db, entry_id, user.id)
+    entry = service.update_entry(db, user, entry, data.taken_on, data.note, data.model_fields_set)
+    db.commit()
+    return service.entry_out(db, entry)
+
+
+@router.delete("/progress-entries/{entry_id}", status_code=204)
+def delete_entry(
+    entry_id: int, user: CurrentUser, db: Db, files: Files, background: BackgroundTasks
+):
+    service.delete_entry(db, service.owned_entry(db, entry_id, user.id))
+    db.commit()
+    purge_later(background, db, files)
+    return Response(status_code=204)
 
 
 @router.get("/progress-photos", response_model=list[ProgressPhotoOut])
@@ -109,16 +140,12 @@ def upload_photo(
 
 @router.patch("/progress-photos/{photo_id}", response_model=ProgressPhotoOut)
 def update_photo(photo_id: int, data: PhotoPatch, user: CurrentUser, db: Db):
+    """Angle, or another day (the photo moves to that day's entry)."""
     photo = service.owned_photo(db, photo_id, user.id)
-    fields = data.model_fields_set
     if data.taken_on:
-        if data.taken_on > local_today(zone(user.profile.timezone)):
-            raise DomainError("Дата в будущем")
-        photo.taken_on = data.taken_on
+        service.move_photo(db, user, photo, data.taken_on)
     if data.pose:
         photo.pose = data.pose
-    if "note" in fields:
-        photo.note = data.note or None
     db.commit()
     return service.photo_out(db, photo)
 

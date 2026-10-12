@@ -87,6 +87,7 @@ export const REMINDER_KINDS: { value: ReminderKind; label: string }[] = [
   { value: 'meal', label: 'Записать питание' },
   { value: 'weight', label: 'Взвеситься' },
   { value: 'photo', label: 'Фото прогресса' },
+  { value: 'measure', label: 'Сделать замеры' },
   { value: 'review', label: 'Разбор рациона' },
   { value: 'custom', label: 'Свое напоминание' },
 ]

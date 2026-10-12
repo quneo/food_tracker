@@ -218,6 +218,7 @@ function MeasurementsBlock() {
   const client = useQueryClient()
   const [kind, setKind] = useState<MeasurementKind | null>(null)
   const [editing, setEditing] = useState<Measurement | null | undefined>(undefined)
+  const [writing, setWriting] = useState(false)
   const [deleting, setDeleting] = useState<Measurement | null>(null)
   const entries = useQuery({
     queryKey: keys.measurements,
@@ -245,9 +246,9 @@ function MeasurementsBlock() {
         <CardTitle>Замеры</CardTitle>
         <CardDescription>Объемы тела и процент жира</CardDescription>
         <CardAction>
-          <Button size="sm" variant="outline" onClick={() => setEditing(null)}>
+          <Button size="sm" variant="outline" onClick={() => setWriting(true)}>
             <Plus />
-            Добавить
+            Записать
           </Button>
         </CardAction>
       </CardHeader>
@@ -261,12 +262,18 @@ function MeasurementsBlock() {
             icon={Ruler}
             title="Замеров пока нет"
             description="Талия, бедра, грудь и другие объемы — раз в 1–2 недели, утром."
-          />
+          >
+            <Button variant="outline" onClick={() => setWriting(true)}>
+              <Ruler />
+              Записать замеры
+            </Button>
+          </EmptyState>
         ) : (
           <>
             <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
               {kinds.map((item) => {
                 const latest = item.entries[0]
+                const previous = item.entries[1]
                 const first = item.entries[item.entries.length - 1]
                 const points: TrendPoint[] = [...item.entries].reverse().map((entry) => ({
                   key: String(entry.id),
@@ -291,10 +298,16 @@ function MeasurementsBlock() {
                         <span className="text-sm font-normal">{item.unit}</span>
                       </span>
                       <span className="text-xs text-muted-foreground tabular">
-                        {item.entries.length > 1
-                          ? `${signed(latest.value - first.value)} с ${formatDay(first.measured_on, 'd MMM')}`
+                        {previous
+                          ? `${signed(latest.value - previous.value)} с прошлого раза`
                           : 'один замер'}
                       </span>
+                      {item.entries.length > 2 && (
+                        <span className="text-xs text-muted-foreground tabular">
+                          {signed(latest.value - first.value)} с{' '}
+                          {formatDay(first.measured_on, 'd MMM')}
+                        </span>
+                      )}
                       {points.length > 1 && (
                         <span className="pointer-events-none block" aria-hidden="true">
                           <TrendLine
@@ -340,6 +353,9 @@ function MeasurementsBlock() {
           </>
         )}
       </CardContent>
+      <ResponsiveSheet open={writing} onOpenChange={setWriting} title="Замеры" wide>
+        {writing && <MeasurementsForm latest={list} onDone={() => setWriting(false)} />}
+      </ResponsiveSheet>
       <MeasurementSheet
         open={editing !== undefined}
         onOpenChange={(value) => !value && setEditing(undefined)}
@@ -358,6 +374,120 @@ function MeasurementsBlock() {
         onConfirm={() => remove.mutateAsync(deleting!.id)}
       />
     </Card>
+  )
+}
+
+/** All measurements of one sitting at once; the last values are shown as hints. */
+function MeasurementsForm({ latest, onDone }: { latest: Measurement[]; onDone: () => void }) {
+  const user = useUser()
+  const client = useQueryClient()
+  const [values, setValues] = useState<Partial<Record<MeasurementKind, string>>>({})
+  const [when, setWhen] = useState(nowIn(user.timezone))
+  const [note, setNote] = useState('')
+  const [error, setError] = useState('')
+  const last = (kind: MeasurementKind) => latest.find((entry) => entry.kind === kind)
+  const save = useMutation({
+    mutationFn: () => {
+      const numbers: Partial<Record<MeasurementKind, number>> = {}
+      for (const item of MEASUREMENTS) {
+        const text = values[item.value]?.trim()
+        if (!text) continue
+        const number = parseNumber(text)
+        const limit = item.value === 'body_fat' ? 75 : 300
+        if (number === null || number <= 0 || number > limit)
+          throw new Error(`${item.label}: от 0 до ${limit} ${item.unit}`)
+        numbers[item.value] = number
+      }
+      if (!Object.keys(numbers).length) throw new Error('Впишите хотя бы один замер')
+      return bodyApi.addMeasurements({
+        values: numbers,
+        measured_at: when || null,
+        note: note.trim() || null,
+      })
+    },
+    onMutate: () => setError(''),
+    onSuccess: async (saved) => {
+      await invalidateBody(client)
+      toast.success(saved.length > 1 ? `Записано замеров: ${saved.length}` : 'Замер записан')
+      onDone()
+    },
+    onError: (e) => setError(e.message),
+    meta: { silent: true },
+  })
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(event) => {
+        event.preventDefault()
+        save.mutate()
+      }}
+    >
+      <p className="text-sm text-muted-foreground">
+        Заполните то, что измерили, остальное оставьте пустым.
+      </p>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-3 sm:grid-cols-4">
+        {MEASUREMENTS.map((item) => {
+          const previous = last(item.value)
+          return (
+            <label key={item.value} className="flex min-w-0 flex-col gap-1.5">
+              <span className="text-sm font-medium">{item.label}</span>
+              <span className="relative">
+                <Input
+                  value={values[item.value] ?? ''}
+                  onChange={(event) =>
+                    setValues((current) => ({ ...current, [item.value]: event.target.value }))
+                  }
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder={previous ? inputNumber(previous.value) : ''}
+                  aria-label={`${item.label}, ${item.unit}`}
+                  className="pr-9 text-lg tabular"
+                />
+                <span
+                  className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm text-muted-foreground"
+                  aria-hidden="true"
+                >
+                  {item.unit}
+                </span>
+              </span>
+              <span className="truncate text-xs text-muted-foreground">
+                {previous ? `было ${formatDay(previous.measured_on, 'd MMM')}` : 'еще не мерили'}
+              </span>
+            </label>
+          )
+        })}
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="measurements-time">Когда</Label>
+          <Input
+            id="measurements-time"
+            type="datetime-local"
+            value={when}
+            max={`${todayIn(user.timezone)}T23:59`}
+            onChange={(event) => setWhen(event.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="measurements-note">Заметка</Label>
+          <Input
+            id="measurements-note"
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            maxLength={300}
+            placeholder="Например, утром до еды"
+          />
+        </div>
+      </div>
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+      <Button type="submit" disabled={save.isPending}>
+        {save.isPending ? 'Сохраняем…' : 'Сохранить замеры'}
+      </Button>
+    </form>
   )
 }
 

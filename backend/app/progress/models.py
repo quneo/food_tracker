@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, String
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, utcnow
@@ -57,18 +57,39 @@ class Measurement(Base):
         return MEASUREMENTS.get(self.kind, ("", "cm"))[1]
 
 
+class ProgressEntry(Base):
+    """One day's set of progress photos: front, back, side and others together."""
+
+    __tablename__ = "progress_entries"
+    __table_args__ = (UniqueConstraint("user_id", "taken_on", name="uq_progress_entries_day"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    taken_on: Mapped[date]
+    note: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+    photos: Mapped[list["ProgressPhoto"]] = relationship(
+        back_populates="entry", order_by="ProgressPhoto.id"
+    )
+
+
 class ProgressPhoto(Base):
     __tablename__ = "progress_photos"
     __table_args__ = (
-        CheckConstraint("pose IN ('front', 'side', 'back', 'other')"),
+        CheckConstraint("pose IN ('front', 'side', 'back', 'other')", name="ck_progress_pose"),
         Index("ix_progress_photos_user_day", "user_id", "taken_on"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    entry_id: Mapped[int] = mapped_column(
+        ForeignKey("progress_entries.id", ondelete="CASCADE"), index=True
+    )
     media_id: Mapped[int] = mapped_column(ForeignKey("media.id", ondelete="CASCADE"), unique=True)
+    # The entry's day, kept here too for quick queries by date.
     taken_on: Mapped[date]
     pose: Mapped[str] = mapped_column(String(8), default="front")
     note: Mapped[str | None] = mapped_column(String(300))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
     media: Mapped[Media] = relationship(lazy="joined")
+    entry: Mapped[ProgressEntry] = relationship(back_populates="photos")

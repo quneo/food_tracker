@@ -29,6 +29,14 @@ class MeasurementIn(BaseModel):
     note: str | None = Field(default=None, max_length=300)
 
 
+class MeasurementsIn(BaseModel):
+    """Several measurements taken together."""
+
+    values: dict[MeasurementKind, float] = Field(min_length=1)
+    measured_at: datetime | None = None
+    note: str | None = Field(default=None, max_length=300)
+
+
 class MeasurementOut(BaseModel):
     id: int
     kind: str
@@ -43,11 +51,16 @@ class MeasurementOut(BaseModel):
 class PhotoPatch(BaseModel):
     taken_on: date | None = None
     pose: Pose | None = None
+
+
+class EntryPatch(BaseModel):
+    taken_on: date | None = None
     note: str | None = Field(default=None, max_length=300)
 
 
 class ProgressPhotoOut(BaseModel):
     id: int
+    entry_id: int
     media_id: int
     taken_on: date
     pose: Pose
@@ -55,3 +68,19 @@ class ProgressPhotoOut(BaseModel):
     width: int
     height: int
     weight_kg: float | None  # the weight closest to the photo's day, within a week
+
+
+class EntryPhotoOut(BaseModel):
+    id: int
+    media_id: int
+    pose: Pose
+    width: int
+    height: int
+
+
+class ProgressEntryOut(BaseModel):
+    id: int
+    taken_on: date
+    note: str | None
+    weight_kg: float | None
+    photos: list[EntryPhotoOut]

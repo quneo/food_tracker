@@ -23,6 +23,7 @@ from app.nutrition import service as nutrition
 from app.nutrition.models import Meal
 from app.progress import service as progress
 from app.reminders import service as reminders
+from app.users import photo_lock
 from app.users import service as users
 from app.users.models import User
 
@@ -214,8 +215,11 @@ def receive(
     if saved and (armed or PROGRESS_WORDS.match(text)):
         note = PROGRESS_WORDS.sub("", text).strip(" ,.:-—") or None
         created = [
-            ["progress_photo", progress.make_progress_photo(db, user, item, note=note).id]
-            for item in saved
+            [
+                "progress_photo",
+                progress.make_progress_photo(db, user, item, pose=pose, note=note).id,
+            ]
+            for item, pose in zip(saved, progress.poses_for(len(saved)), strict=True)
         ]
         count = f" ({len(saved)} шт.)" if len(saved) > 1 else ""
         return _answer(
@@ -310,6 +314,17 @@ def start_review(db: Session, user: User, days: int, status_message_id: int | No
 def _press(db: Session, user: User, parts: list[str], message_id: int | None) -> dict:
     head = parts[0]
     result = {"view": None, "toast": None, "message": None, "job_id": None}
+    if head == "pin":
+        if parts[1] == "reset" and photo_lock.confirm_reset(user.profile):
+            text = "🔓 Код для фото прогресса сброшен. Новый можно задать в профиле на сайте."
+        elif parts[1] == "reset":
+            text = "Запрос устарел. Попросите сброс на сайте еще раз."
+        else:
+            user.profile.photo_pin_reset_at = None
+            text = "Код оставили прежним."
+        db.commit()
+        result["view"] = view(text)
+        return result
     if head == "rv":
         days = int(parts[1])
         job = start_review(db, user, days, message_id)

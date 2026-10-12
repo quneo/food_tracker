@@ -281,9 +281,11 @@ class Executor:
     def save_progress_photo(self, action: SaveProgressPhoto):
         if not self.photos:
             raise DomainError("в сообщении нет фото")
-        for photo in self.photos:
+        # Several photos are one entry: front, back, side unless told otherwise.
+        poses = progress.poses_for(len(self.photos), action.pose)
+        for photo, pose in zip(self.photos, poses, strict=True):
             record = progress.make_progress_photo(
-                self.db, self.user, photo, pose=action.pose, note=action.note
+                self.db, self.user, photo, pose=pose, note=action.note
             )
             self.out.created.append(["progress_photo", record.id])
         count = len(self.photos)
@@ -406,8 +408,12 @@ class Executor:
                 .first()
             )
         reminder = existing or Reminder(user_id=self.user.id, kind=action.reminder_kind)
+        every = min(max(action.every_weeks or 1, 1), 4)
+        if every != (reminder.every_weeks or 1):
+            reminder.anchor_on = None
         reminder.time = f"{at:%H:%M}"
         reminder.days = days
+        reminder.every_weeks = every
         reminder.text = text
         reminder.enabled = True
         reminders.reschedule(reminder, self.tz_name)

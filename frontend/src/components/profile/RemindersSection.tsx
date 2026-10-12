@@ -7,6 +7,7 @@ import {
   MessageSquareText,
   Pencil,
   Plus,
+  Ruler,
   Scale,
   Trash2,
   Utensils,
@@ -39,24 +40,47 @@ const ICONS: Record<ReminderKind, typeof BellRing> = {
   meal: Utensils,
   weight: Scale,
   photo: Camera,
+  measure: Ruler,
   review: ChartColumnBig,
   custom: MessageSquareText,
 }
 
-function schedule(days: number[]) {
+const PERIODS = [
+  { value: 1, label: 'Каждую неделю' },
+  { value: 2, label: 'Раз в 2 недели' },
+  { value: 3, label: 'Раз в 3 недели' },
+  { value: 4, label: 'Раз в 4 недели' },
+]
+
+/** Sensible starting points when a new reminder's kind is picked. */
+const DEFAULTS: Partial<Record<ReminderKind, Pick<ReminderIn, 'time' | 'days'>>> = {
+  meal: { time: '21:00', days: [1, 2, 3, 4, 5, 6, 7] },
+  weight: { time: '08:00', days: [1, 2, 3, 4, 5, 6, 7] },
+  photo: { time: '10:00', days: [7] },
+  measure: { time: '09:00', days: [1] },
+  review: { time: '20:00', days: [7] },
+}
+
+function schedule(days: number[], every = 1) {
   const key = [...days].sort((a, b) => a - b).join(',')
-  if (key === '1,2,3,4,5,6,7') return 'каждый день'
-  if (key === '1,2,3,4,5') return 'по будням'
-  if (key === '6,7') return 'по выходным'
-  return WEEKDAYS.filter((day) => days.includes(day.value))
-    .map((day) => day.short.toLowerCase())
-    .join(', ')
+  const names =
+    key === '1,2,3,4,5,6,7'
+      ? 'каждый день'
+      : key === '1,2,3,4,5'
+        ? 'по будням'
+        : key === '6,7'
+          ? 'по выходным'
+          : WEEKDAYS.filter((day) => days.includes(day.value))
+              .map((day) => day.short.toLowerCase())
+              .join(', ')
+  return every > 1 ? `раз в ${every} недели, ${names}` : names
 }
 
 const toInput = (reminder: Reminder): ReminderIn => ({
   kind: reminder.kind,
   time: reminder.time,
   days: reminder.days,
+  every_weeks: reminder.every_weeks,
   text: reminder.text,
   enabled: reminder.enabled,
   smart_skip: reminder.smart_skip,
@@ -144,7 +168,8 @@ export function RemindersSection() {
                       {title}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      <span className="tabular">{reminder.time}</span> · {schedule(reminder.days)}
+                      <span className="tabular">{reminder.time}</span>,{' '}
+                      {schedule(reminder.days, reminder.every_weeks)}
                     </p>
                     {reminder.enabled && reminder.next_run_at && (
                       <p className="text-xs text-muted-foreground">
@@ -221,6 +246,7 @@ function ReminderForm({
           kind: 'meal',
           time: '21:00',
           days: [1, 2, 3, 4, 5, 6, 7],
+          every_weeks: 1,
           text: null,
           enabled: true,
           smart_skip: true,
@@ -269,7 +295,14 @@ function ReminderForm({
               aria-checked={form.kind === kind.value}
               data-state={form.kind === kind.value ? 'on' : 'off'}
               className="chip"
-              onClick={() => set('kind', kind.value)}
+              onClick={() =>
+                setForm((current) => ({
+                  ...current,
+                  kind: kind.value,
+                  // A new reminder takes the usual time and days of its kind.
+                  ...(reminder ? {} : (DEFAULTS[kind.value] ?? {})),
+                }))
+              }
             >
               {kind.label}
             </button>
@@ -346,6 +379,27 @@ function ReminderForm({
             </Button>
           ))}
         </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="reminder-period">Повторять</Label>
+        <select
+          id="reminder-period"
+          value={form.every_weeks}
+          onChange={(event) => set('every_weeks', Number(event.target.value))}
+          className="h-11 w-full rounded-[12px] border bg-card px-3 text-[15px] sm:w-64"
+        >
+          {PERIODS.map((period) => (
+            <option key={period.value} value={period.value}>
+              {period.label}
+            </option>
+          ))}
+        </select>
+        {form.every_weeks > 1 && (
+          <p className="text-xs text-muted-foreground">
+            Первое напоминание придет в ближайший выбранный день, дальше — раз в {form.every_weeks}{' '}
+            недели.
+          </p>
+        )}
       </div>
       <div className="flex items-start justify-between gap-4">
         <Label htmlFor="reminder-skip" className="flex flex-col items-start gap-1 font-normal">

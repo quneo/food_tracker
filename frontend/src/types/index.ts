@@ -245,6 +245,7 @@ export type Pose = 'front' | 'side' | 'back' | 'other'
 
 export interface ProgressPhoto {
   id: number
+  entry_id: number
   media_id: number
   taken_on: string
   pose: Pose
@@ -252,6 +253,22 @@ export interface ProgressPhoto {
   width: number
   height: number
   weight_kg: number | null
+}
+
+/** One day's set of progress photos: front, back, side together. */
+export interface ProgressEntry {
+  id: number
+  taken_on: string
+  note: string | null
+  weight_kg: number | null
+  photos: { id: number; media_id: number; pose: Pose; width: number; height: number }[]
+}
+
+export interface PhotoLock {
+  enabled: boolean
+  unlocked: boolean
+  unlocked_until: string | null
+  blocked_until: string | null
 }
 
 // Profile
@@ -307,7 +324,7 @@ export interface SuggestedTargets {
   tdee: number
 }
 
-export type ReminderKind = 'meal' | 'weight' | 'photo' | 'review' | 'custom'
+export type ReminderKind = 'meal' | 'weight' | 'photo' | 'measure' | 'review' | 'custom'
 
 /** A saved product with numbers from its label, per 100 g (or 100 ml). */
 export interface Product {
@@ -335,6 +352,7 @@ export interface Reminder {
   kind: ReminderKind
   time: string
   days: number[]
+  every_weeks: number
   text: string | null
   enabled: boolean
   smart_skip: boolean
@@ -346,6 +364,7 @@ export interface ReminderIn {
   kind: ReminderKind
   time: string
   days: number[]
+  every_weeks: number
   text: string | null
   enabled: boolean
   smart_skip: boolean

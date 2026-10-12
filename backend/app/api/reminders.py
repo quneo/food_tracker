@@ -14,9 +14,10 @@ router = APIRouter(prefix="/reminders", tags=["reminders"])
 
 
 class ReminderIn(BaseModel):
-    kind: Literal["meal", "weight", "photo", "review", "custom"]
+    kind: Literal["meal", "weight", "photo", "measure", "review", "custom"]
     time: str = Field(pattern=r"^\d{2}:\d{2}$")
     days: list[int] = Field(min_length=1, max_length=7)
+    every_weeks: int = Field(default=1, ge=1, le=4)
     text: str | None = Field(default=None, max_length=300)
     enabled: bool = True
     smart_skip: bool = True
@@ -35,6 +36,7 @@ def reminder_out(reminder: Reminder, tz_name: str) -> dict:
         "kind": reminder.kind,
         "time": reminder.time,
         "days": reminder.days,
+        "every_weeks": reminder.every_weeks,
         "text": reminder.text,
         "enabled": reminder.enabled,
         "smart_skip": reminder.smart_skip,
@@ -54,6 +56,9 @@ def apply(reminder: Reminder, data: ReminderIn, tz_name: str):
     reminder.kind = data.kind
     reminder.time = data.time
     reminder.days = data.days
+    if data.every_weeks != reminder.every_weeks:
+        reminder.anchor_on = None  # a new cadence starts on the nearest day
+    reminder.every_weeks = data.every_weeks
     reminder.text = (data.text or "").strip() or None
     reminder.enabled = data.enabled
     reminder.smart_skip = data.smart_skip

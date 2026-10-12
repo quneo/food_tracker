@@ -157,9 +157,12 @@ class UpdateProfile(Strict):
 
 class SetReminder(Strict):
     kind: Literal["set_reminder"]
-    reminder_kind: Literal["meal", "weight", "photo", "review", "custom"]
+    reminder_kind: Literal["meal", "weight", "photo", "measure", "review", "custom"]
     time: str = Field(description="Local 'HH:MM'.")
     days: list[int] = Field(description="ISO weekdays, 1 = Monday ... 7 = Sunday.")
+    every_weeks: int | None = Field(
+        description="Repeat every N weeks (2-4) on those days; null = every week."
+    )
     text: str | None = Field(description="Reminder text for custom reminders, else null.")
 
 

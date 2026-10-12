@@ -200,6 +200,7 @@ def test_body_and_settings_actions(person, runner, worker, sessions):
                     "reminder_kind": "weight",
                     "time": "07:30",
                     "days": [1, 2, 3, 4, 5],
+                    "every_weeks": None,
                     "text": None,
                 },
                 {

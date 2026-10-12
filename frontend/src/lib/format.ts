@@ -126,6 +126,12 @@ export function utcLabel(value: string | null, withTime = true) {
   return format(date, withTime ? 'd MMM yyyy, HH:mm' : 'd MMM yyyy', { locale: ru })
 }
 
+/** A moment from the server (UTC with an offset) as the browser's local "21:15". */
+export function timeOfInstant(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : format(date, 'HH:mm', { locale: ru })
+}
+
 /** Accepts "82,4" and "82.4"; empty -> null. */
 export function parseNumber(text: string): number | null {
   const value = text.replace(/\s/g, '').replace(',', '.')

@@ -10,12 +10,14 @@ export function Lightbox({
   onIndexChange,
   onClose,
   title = 'Фото',
+  version,
 }: {
   ids: number[]
   index: number | null
   onIndexChange: (index: number) => void
   onClose: () => void
   title?: string
+  version?: string
 }) {
   const open = index !== null && ids.length > 0
   const current = index ?? 0
@@ -46,6 +48,7 @@ export function Lightbox({
               id={ids[current]}
               alt={title}
               size="original"
+              version={version}
               fit="contain"
               eager
               className="size-full bg-transparent text-white/70"

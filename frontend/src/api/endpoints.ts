@@ -18,9 +18,12 @@ import type {
   MealStatus,
   Measurement,
   MeasurementIn,
+  MeasurementKind,
   Pose,
   Profile,
   ProgressPhoto,
+  ProgressEntry,
+  PhotoLock,
   Reminder,
   ReminderIn,
   Report,
@@ -116,10 +119,19 @@ export const bodyApi = {
   measurements: (range: { start?: string; end?: string } = {}, { signal }: Signal = {}) =>
     api<Measurement[]>(`/measurements${query(range)}`, { signal }),
   addMeasurement: (data: MeasurementIn) => api<Measurement>('/measurements', json('POST', data)),
+  addMeasurements: (data: {
+    values: Partial<Record<MeasurementKind, number>>
+    measured_at: string | null
+    note: string | null
+  }) => api<Measurement[]>('/measurements/batch', json('POST', data)),
   updateMeasurement: (id: number, data: MeasurementIn) =>
     api<Measurement>(`/measurements/${id}`, json('PUT', data)),
   removeMeasurement: (id: number) => api<void>(`/measurements/${id}`, { method: 'DELETE' }),
   photos: ({ signal }: Signal = {}) => api<ProgressPhoto[]>('/progress-photos', { signal }),
+  entries: ({ signal }: Signal = {}) => api<ProgressEntry[]>('/progress-entries', { signal }),
+  updateEntry: (id: number, data: { taken_on?: string; note?: string | null }) =>
+    api<ProgressEntry>(`/progress-entries/${id}`, json('PATCH', data)),
+  removeEntry: (id: number) => api<void>(`/progress-entries/${id}`, { method: 'DELETE' }),
   uploadPhoto: (data: { file: File; taken_on?: string; pose: Pose; note?: string }) => {
     const form = new FormData()
     form.append('photo', data.file)
@@ -128,7 +140,7 @@ export const bodyApi = {
     if (data.note) form.append('note', data.note)
     return api<ProgressPhoto>('/progress-photos', { method: 'POST', body: form })
   },
-  updatePhoto: (id: number, data: { taken_on?: string; pose?: Pose; note?: string | null }) =>
+  updatePhoto: (id: number, data: { taken_on?: string; pose?: Pose }) =>
     api<ProgressPhoto>(`/progress-photos/${id}`, json('PATCH', data)),
   removePhoto: (id: number) => api<void>(`/progress-photos/${id}`, { method: 'DELETE' }),
 }
@@ -138,6 +150,16 @@ export const profileApi = {
   save: (data: Profile) => api<Profile>('/profile', json('PUT', data)),
   suggested: () => api<SuggestedTargets>('/profile/suggested-targets'),
   aiUsage: ({ signal }: Signal = {}) => api<AiUsage>('/profile/ai-usage', { signal }),
+}
+
+export const photoLockApi = {
+  get: ({ signal }: Signal = {}) => api<PhotoLock>('/photo-lock', { signal }),
+  set: (pin: string, current?: string) =>
+    api<PhotoLock>('/photo-lock', json('PUT', { pin, current: current || null })),
+  remove: (pin: string) => api<PhotoLock>('/photo-lock/remove', json('POST', { pin })),
+  unlock: (pin: string) => api<PhotoLock>('/photo-lock/unlock', json('POST', { pin })),
+  lock: () => api<PhotoLock>('/photo-lock/lock', { method: 'POST' }),
+  reset: () => api<{ sent: boolean }>('/photo-lock/reset', { method: 'POST' }),
 }
 
 export const remindersApi = {

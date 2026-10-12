@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
 import { TelegramLinkButton } from '@/components/shared/TelegramLinkButton'
+import { PhotoLockCard } from './PhotoLockCard'
 import { botLink } from '@/lib/telegram'
 import { utcLabel } from '@/lib/format'
 
@@ -108,6 +109,8 @@ export function AccountSection() {
           </div>
         </CardContent>
       </Card>
+
+      <PhotoLockCard />
 
       <Card>
         <CardHeader>

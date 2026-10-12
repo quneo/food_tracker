@@ -15,6 +15,7 @@ export function Photo({
   style,
   eager = false,
   fit = 'cover',
+  version = '',
 }: {
   id: number
   alt: string
@@ -23,6 +24,8 @@ export function Photo({
   style?: CSSProperties
   eager?: boolean
   fit?: 'cover' | 'contain'
+  /** See mediaUrl: a new value loads the photo again. */
+  version?: string
 }) {
   const [failed, setFailed] = useState(false)
   return (
@@ -33,7 +36,7 @@ export function Photo({
         </span>
       ) : (
         <img
-          src={mediaUrl(id, size)}
+          src={mediaUrl(id, size, version)}
           alt={alt}
           loading={eager ? 'eager' : 'lazy'}
           decoding="async"

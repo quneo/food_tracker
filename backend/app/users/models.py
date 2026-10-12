@@ -69,6 +69,12 @@ class Profile(Base):
     about: Mapped[str | None] = mapped_column(String(2000))
     # Save meals from the bot at once instead of waiting for "Save".
     auto_confirm_meals: Mapped[bool] = mapped_column(default=False)
+    # A code that unblurs progress photos on the site (scrypt hash), and its guard rails.
+    photo_pin_hash: Mapped[str | None] = mapped_column(String(200))
+    photo_pin_failures: Mapped[int] = mapped_column(default=0, server_default="0")
+    photo_pin_blocked_until: Mapped[datetime | None]
+    # When the person asked to reset a forgotten code; the bot button confirms it.
+    photo_pin_reset_at: Mapped[datetime | None]
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 
     user: Mapped[User] = relationship(back_populates="profile")
@@ -106,6 +112,8 @@ class WebSession(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     last_used_at: Mapped[datetime] = mapped_column(default=utcnow)
     expires_at: Mapped[datetime]
+    # Progress photos are shown unblurred in this browser until then (after the code).
+    photos_unlocked_until: Mapped[datetime | None]
 
 
 class LoginRequest(Base):

@@ -66,5 +66,12 @@ export function query(values: Record<string, string | number | boolean | null | 
 }
 
 /** URL of a stored photo: a WebP preview by default, the original file on request. */
-export const mediaUrl = (id: number, size: 'preview' | 'original' = 'preview') =>
-  size === 'original' ? `/api/media/${id}?size=original` : `/api/media/${id}`
+/** `version` changes the address when the same photo may look different (body photos
+ * before and after the photo code). */
+export const mediaUrl = (id: number, size: 'preview' | 'original' = 'preview', version = '') => {
+  const params = new URLSearchParams()
+  if (size === 'original') params.set('size', 'original')
+  if (version) params.set('v', version)
+  const search = params.toString()
+  return `/api/media/${id}${search ? `?${search}` : ''}`
+}

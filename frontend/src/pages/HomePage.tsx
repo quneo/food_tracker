@@ -119,9 +119,12 @@ export default function HomePage() {
               </CardContent>
             ) : summary.data?.meals.length ? (
               <div className="row-list">
-                {summary.data.meals.map((meal) => (
-                  <MealRow key={meal.id} meal={meal} onOpen={open} />
-                ))}
+                {/* The latest first, like the diary. */}
+                {[...summary.data.meals]
+                  .sort((a, b) => (a.eaten_at < b.eaten_at ? 1 : -1))
+                  .map((meal) => (
+                    <MealRow key={meal.id} meal={meal} onOpen={open} />
+                  ))}
               </div>
             ) : summary.data ? (
               <EmptyState

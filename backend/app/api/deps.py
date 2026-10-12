@@ -10,7 +10,7 @@ from app.database import get_db
 from app.media import service as media
 from app.media.storage import Storage, get_storage
 from app.users import service as users
-from app.users.models import User
+from app.users.models import User, WebSession
 
 SESSION_COOKIE = "food_session"
 Db = Annotated[Session, Depends(get_db)]
@@ -47,6 +47,13 @@ def current_user(request: Request, db: Db) -> User:
     return user
 
 
+def current_session(request: Request, db: Db) -> WebSession:
+    session = users.session_of(db, request.cookies.get(SESSION_COOKIE))
+    if not session:
+        raise DomainError("Войдите в дневник", 401)
+    return session
+
+
 def bot_user(request: Request, db: Db) -> User:
     """The person the bot acts for (X-Telegram-User), after the bot secret check."""
     require_bot(request)
@@ -74,5 +81,6 @@ def admin_user(user: Annotated[User, Depends(current_user)]) -> User:
 
 
 CurrentUser = Annotated[User, Depends(current_user)]
+CurrentSession = Annotated[WebSession, Depends(current_session)]
 BotUser = Annotated[User, Depends(bot_user)]
 Admin = Annotated[User, Depends(admin_user)]

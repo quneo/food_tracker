@@ -1,7 +1,7 @@
 """Personal reminders: schedule in the person's time zone, delivery through the outbox."""
 
 import logging
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -20,11 +20,13 @@ TEXTS = {
     "meal": "🍽 Не забудьте записать, что ели. Пришлите фото или напишите парой слов.",
     "weight": "⚖️ Время взвеситься. Пришлите вес, например: 82.4",
     "photo": "📸 Пора сделать фото прогресса. Пришлите фото с подписью «прогресс».",
+    "measure": "📏 Время замеров. Пришлите числа, например: «талия 82, бедра 98, грудь 101».",
 }
 KIND_NAMES = {
     "meal": "Записать питание",
     "weight": "Взвеситься",
     "photo": "Фото прогресса",
+    "measure": "Сделать замеры",
     "review": "Разбор рациона",
 }
 
@@ -35,6 +37,7 @@ def default_reminders(user) -> list[Reminder]:
         ("weight", "08:00", [1, 2, 3, 4, 5, 6, 7]),
         ("meal", "21:00", [1, 2, 3, 4, 5, 6, 7]),
         ("photo", "10:00", [7]),
+        ("measure", "09:00", [1]),
         ("review", "20:00", [7]),
     ]
     return [
@@ -51,6 +54,18 @@ def parse_time(text: str) -> time:
         raise DomainError("Время в формате ЧЧ:ММ, например 08:30") from None
 
 
+def monday(day: date) -> date:
+    return day - timedelta(days=day.weekday())
+
+
+def _counts(reminder: Reminder, day: date) -> bool:
+    """Every N weeks: only weeks a multiple of N away from the anchor week."""
+    every = reminder.every_weeks or 1
+    if every == 1 or not reminder.anchor_on:
+        return True
+    return (monday(day) - reminder.anchor_on).days // 7 % every == 0
+
+
 def next_run(reminder: Reminder, tz_name: str, after: datetime | None = None) -> datetime | None:
     """The next moment (naive UTC) strictly after `after` on one of the reminder's days."""
     if not reminder.enabled or not reminder.days:
@@ -59,9 +74,9 @@ def next_run(reminder: Reminder, tz_name: str, after: datetime | None = None) ->
     at = parse_time(reminder.time)
     after = after or utcnow()
     start = to_local(after, tz).date()
-    for offset in range(8):
+    for offset in range(7 * (reminder.every_weeks or 1) + 8):
         day = start + timedelta(days=offset)
-        if day.isoweekday() not in reminder.days:
+        if day.isoweekday() not in reminder.days or not _counts(reminder, day):
             continue
         candidate = from_local(datetime.combine(day, at), tz)
         if candidate > after:
@@ -70,6 +85,13 @@ def next_run(reminder: Reminder, tz_name: str, after: datetime | None = None) ->
 
 
 def reschedule(reminder: Reminder, tz_name: str):
+    """A reminder every few weeks starts on its nearest day; that week becomes the anchor."""
+    if (reminder.every_weeks or 1) == 1:
+        reminder.anchor_on = None
+    elif not reminder.anchor_on and reminder.enabled:
+        first = next_run(reminder, tz_name)
+        if first:
+            reminder.anchor_on = monday(to_local(first, zone(tz_name)).date())
     reminder.next_run_at = next_run(reminder, tz_name)
 
 
@@ -89,6 +111,9 @@ def describe(reminder: Reminder) -> str:
         if days == [1, 2, 3, 4, 5]
         else ", ".join(names[d - 1] for d in days)
     )
+    every = reminder.every_weeks or 1
+    if every > 1:
+        when = f"раз в {every} недели, {when}"
     what = reminder.text if reminder.kind == "custom" else KIND_NAMES[reminder.kind]
     return f"{what}: {when} в {reminder.time}"
 
@@ -102,7 +127,7 @@ def owned(db: Session, reminder_id: int, user_id: int) -> Reminder:
 
 def _already_done(db: Session, reminder: Reminder, tz_name: str) -> bool:
     from app.nutrition.models import Meal
-    from app.progress.models import ProgressPhoto, WeightEntry
+    from app.progress.models import Measurement, ProgressPhoto, WeightEntry
 
     tz = zone(tz_name)
     now = utcnow()
@@ -123,6 +148,11 @@ def _already_done(db: Session, reminder: Reminder, tz_name: str) -> bool:
             ProgressPhoto.user_id == user, ProgressPhoto.taken_on > today - timedelta(days=6)
         )
         return db.scalar(recent) > 0
+    if reminder.kind == "measure":
+        measured = select(func.count(Measurement.id)).where(
+            Measurement.user_id == user, Measurement.measured_on >= today - timedelta(days=1)
+        )
+        return db.scalar(measured) > 0
     return False
 
 

@@ -23,7 +23,7 @@ def test_next_run_respects_time_zone_and_days():
 def test_due_reminders_go_to_the_outbox(make_person, sessions):
     person = make_person(8001, "Катя")
     reminders = person.web.get("/api/reminders").json()
-    assert {r["kind"] for r in reminders} == {"meal", "weight", "photo", "review"}
+    assert {r["kind"] for r in reminders} == {"meal", "weight", "photo", "measure", "review"}
     assert not any(r["enabled"] for r in reminders)
     custom = person.web.post(
         "/api/reminders",

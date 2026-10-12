@@ -12,6 +12,7 @@ import {
 import { Photo } from '@/components/shared/Photo'
 import { EmptyState } from '@/components/shared/States'
 import { mediaUrl } from '@/api/client'
+import { usePhotoLock } from '@/hooks/usePhotoLock'
 import { poseLabel } from '@/lib/labels'
 import { days as daysText, diffDays, formatDay, num, signed } from '@/lib/format'
 import type { ProgressPhoto } from '@/types'
@@ -31,6 +32,7 @@ function defaults(photos: ProgressPhoto[]) {
 }
 
 export function CompareView({ photos }: { photos: ProgressPhoto[] }) {
+  const { version } = usePhotoLock()
   // The API lists photos newest first.
   const initial = useMemo(() => (photos.length > 1 ? defaults(photos) : null), [photos])
   const [beforeId, setBeforeId] = useState<number | null>(null)
@@ -124,7 +126,7 @@ export function CompareView({ photos }: { photos: ProgressPhoto[] }) {
       </div>
 
       {mode === 'slider' ? (
-        <CompareSlider before={before} after={after} />
+        <CompareSlider before={before} after={after} version={version} />
       ) : (
         <div className="grid grid-cols-2 gap-2 sm:gap-3">
           {[
@@ -138,6 +140,7 @@ export function CompareView({ photos }: { photos: ProgressPhoto[] }) {
                 className="w-full rounded-[16px]"
                 style={{ aspectRatio: `${photo.width || 3} / ${photo.height || 4}` }}
                 fit="cover"
+                version={version}
               />
               <figcaption className="text-sm">
                 <span className="font-medium">{label}</span>{' '}
@@ -186,7 +189,15 @@ function PhotoPicker({
 const clamp = (value: number) => Math.min(100, Math.max(0, value))
 
 /** Before on the left, after on the right; drag, tap or use the keyboard to move the edge. */
-export function CompareSlider({ before, after }: { before: ProgressPhoto; after: ProgressPhoto }) {
+export function CompareSlider({
+  before,
+  after,
+  version = '',
+}: {
+  before: ProgressPhoto
+  after: ProgressPhoto
+  version?: string
+}) {
   const [position, setPosition] = useState(50)
   const box = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
@@ -240,9 +251,13 @@ export function CompareSlider({ before, after }: { before: ProgressPhoto; after:
         onPointerUp={up}
         onPointerCancel={up}
       >
-        <img src={mediaUrl(after.media_id)} alt={`После: ${describe(after)}`} draggable={false} />
         <img
-          src={mediaUrl(before.media_id)}
+          src={mediaUrl(after.media_id, 'preview', version)}
+          alt={`После: ${describe(after)}`}
+          draggable={false}
+        />
+        <img
+          src={mediaUrl(before.media_id, 'preview', version)}
           alt={`До: ${describe(before)}`}
           draggable={false}
           style={{ clipPath: `inset(0 ${100 - position}% 0 0)` }}

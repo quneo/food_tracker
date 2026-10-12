@@ -3,7 +3,7 @@
 import io
 from dataclasses import dataclass
 
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageFilter, ImageOps, UnidentifiedImageError
 
 from app.core.exceptions import DomainError
 
@@ -50,6 +50,21 @@ def inspect(data: bytes) -> Picture:
     preview = io.BytesIO()
     _resized(image, PREVIEW_SIDE).save(preview, "WEBP", quality=80, method=4)
     return Picture(content_type, upright.width, upright.height, preview.getvalue())
+
+
+def veiled(data: bytes) -> bytes:
+    """A copy with nothing recognisable left: a few pixels across, scaled back and blurred."""
+    image = Image.open(io.BytesIO(data)).convert("RGB")
+    width, height = image.size
+    tiny = image.resize(
+        (max(1, 6 * width // max(width, height)), max(1, 6 * height // max(width, height)))
+    )
+    side = 360
+    size = (side * width // max(width, height), side * height // max(width, height))
+    soft = tiny.resize(size, Image.Resampling.BILINEAR).filter(ImageFilter.GaussianBlur(24))
+    out = io.BytesIO()
+    soft.save(out, "WEBP", quality=60)
+    return out.getvalue()
 
 
 def for_ai(data: bytes) -> bytes:
