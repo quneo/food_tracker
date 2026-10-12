@@ -67,9 +67,9 @@ def veiled(data: bytes) -> bytes:
     return out.getvalue()
 
 
-def for_ai(data: bytes) -> bytes:
+def for_ai(data: bytes, side: int = AI_SIDE) -> bytes:
     """A JPEG for analysis: smaller, upright, without EXIF (no location leaves the server)."""
-    image = _resized(_open(data), AI_SIDE)
+    image = _resized(_open(data), side)
     out = io.BytesIO()
     image.convert("RGB").save(out, "JPEG", quality=85)
     return out.getvalue()

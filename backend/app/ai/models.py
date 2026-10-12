@@ -56,6 +56,8 @@ class AiJob(Base):
     kind: Mapped[str] = mapped_column(String(8), default="turn", server_default="turn")
     days: Mapped[int | None]
     attempts: Mapped[int] = mapped_column(default=0)
+    # Starts no earlier: messages sent in a quick row are answered together.
+    not_before: Mapped[datetime | None]
     # The bot's "thinking…" message that the answer replaces.
     status_message_id: Mapped[int | None] = mapped_column(BigInteger)
     model: Mapped[str | None] = mapped_column(String(64))

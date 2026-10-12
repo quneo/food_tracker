@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     ai_reasoning_effort: Literal["low", "medium", "high", "xhigh"] = "medium"
     ai_timeout: int = Field(default=240, ge=30, le=900)
     ai_max_parallel: int = Field(default=2, ge=1, le=8)
+    # Seconds to wait after a message in a session, so a quick row is answered at once.
+    ai_debounce: float = Field(default=2.0, ge=0, le=30)
+    # Minutes of quiet after which a session in the bot ends.
+    session_idle_minutes: int = Field(default=20, ge=5, le=240)
     # Optional prices in USD per million tokens, to show the cost next to the token counts
     # in the profile. Cached input falls back to the input price.
     ai_price_input: float | None = Field(default=None, ge=0)

@@ -16,7 +16,9 @@ REPLY = {"reply": "Привет!", "actions": []}
 
 @pytest.fixture
 def person(make_person):
-    return make_person(9201, "Вадим")
+    person = make_person(9201, "Вадим")
+    person.start_session()  # the assistant only hears messages inside a session
+    return person
 
 
 def test_token_usage_by_period(person, runner, worker, sessions):

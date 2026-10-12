@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.ai.actions import execute_pending
 from app.ai.jobs import ERRORS
 from app.ai.models import AiJob
-from app.chat import views
+from app.chat import outbox, sessions, views
 from app.chat.models import ChatMessage, ChatState, PendingAction
 from app.chat.outbox import view
 from app.config import get_settings
@@ -18,10 +18,12 @@ from app.core.exceptions import DomainError
 from app.core.timeutil import local_today, zone
 from app.database import utcnow
 from app.media import service as media
+from app.media.models import Media
 from app.media.storage import Storage
 from app.nutrition import service as nutrition
 from app.nutrition.models import Meal
 from app.progress import service as progress
+from app.progress.models import MEASUREMENTS
 from app.reminders import service as reminders
 from app.users import photo_lock
 from app.users import service as users
@@ -29,25 +31,46 @@ from app.users.models import User
 
 # /progress applies to the next photo only, and only for a while.
 PROGRESS_MODE = timedelta(minutes=10)
+AWAITING = timedelta(minutes=10)
 PROGRESS_WORDS = re.compile(r"^\s*(прогресс|фото тела|фото прогресса|моя форма)\b", re.I)
 WEIGHT = re.compile(
     r"^\s*(?P<word>вес|взвесил(?:ся|ась)?|weight)?\s*[:=-]?\s*"
     r"(?P<value>\d{2,3}(?:[.,]\d{1,2})?)\s*(?P<unit>кг|kg)?\.?\s*$",
     re.IGNORECASE,
 )
+# "талия 82, бедра 98,5": measurement names as people write them.
+MEASURE_NAMES = {
+    "waist": r"тали[яиюей]|waist",
+    "hips": r"б[её]дра|б[её]дер|hips",
+    "chest": r"груд[ьи]|грудь|chest",
+    "neck": r"ше[яиюей]|neck",
+    "arm": r"бицепс\w*|рук[аиу]|arm",
+    "thigh": r"бедро|бедре|thigh",
+    "calf": r"голен[ьи]|икр[аыу]|calf",
+    "body_fat": r"(?:процент\s+)?жир\w*|body\s*fat",
+}
+MEASURE = re.compile(
+    r"\b(?:" + "|".join(f"(?P<{kind}>{words})" for kind, words in MEASURE_NAMES.items()) + r")"
+    r"\s*[:=-]?\s*(?P<value>\d{1,3}(?:[.,]\d{1,2})?)\s*(?:см|cm|%)?",
+    re.IGNORECASE,
+)
+LEFTOVER = re.compile(r"^[\s,;.и+]*$", re.IGNORECASE)
 HELP = (
-    "<b>Как пользоваться</b>\n\n"
-    "🍽 <b>Еда.</b> Пришлите фото тарелки или напишите, что съели: "
-    "<i>«овсянка 60 г на молоке и банан»</i>. Я посчитаю КБЖУ и покажу черновик — "
-    "нажмите «Сохранить» или напишите, что поправить: <i>«риса было 200 г»</i>.\n\n"
-    "🏷 <b>Свои продукты.</b> Пришлите фото этикетки с подписью <i>«запомни мое молоко»</i> — "
-    "сохраню КБЖУ и фото состава, потом <i>«стакан моего молока»</i> посчитаю точно.\n\n"
-    "⚖️ <b>Вес и замеры.</b> Просто числом: <i>«вес 82.4»</i>, <i>«талия 80»</i>.\n\n"
-    "📸 <b>Фото тела.</b> Подпишите фото словом «прогресс» или нажмите /progress перед "
-    "отправкой. Остальные фото я считаю едой.\n\n"
-    "💬 <b>Вопросы и разбор.</b> <i>«сколько белка за неделю?»</i>, <i>«что съесть на "
-    "ужин?»</i>. /review — разбор рациона за день, неделю или месяц.\n\n"
-    "/today — итоги дня · /new — новый разговор"
+    "<b>Как это работает</b>\n\n"
+    "🟢 <b>Сессия</b> — разговор с ассистентом. Нажмите «Новая сессия» и пишите как в "
+    "обычном чате: текст, фото, несколько сообщений подряд. Ассистент видит всё, что пришло "
+    "в сессии, считает КБЖУ, отвечает на вопросы. Через 20 минут тишины сессия закроется "
+    "сама.\n\n"
+    "🍽 <b>Еда.</b> В сессии пришлите фото тарелки или напишите, что съели: "
+    "<i>«овсянка 60 г на молоке и банан»</i>. Придет черновик: «Сохранить» или напишите, что "
+    "поправить.\n\n"
+    "Без сессии ассистент ничего не получает, а кнопки внизу работают всегда:\n"
+    "⚖️ <b>Вес</b> и 📏 <b>Замеры</b> — запишу числа сразу\n"
+    "📸 <b>Прогресс</b> — фото тела в альбом\n"
+    "📊 <b>Сегодня</b> — итоги дня\n"
+    "🧾 <b>Разбор</b> — ассистент разберет рацион (откроет сессию)\n\n"
+    "Вес можно прислать и просто числом: <i>«82,4»</i>, замеры строкой: "
+    "<i>«талия 82, бедра 98»</i>."
 )
 
 
@@ -63,6 +86,28 @@ def state_of(db: Session, user: User) -> ChatState:
 def site_row(text: str = "🌐 Открыть дневник", path: str = "/") -> list:
     button = views.site_button(text, path)
     return [[button]] if button else []
+
+
+def _keyboard(db: Session, user: User) -> list:
+    state_of(db, user).keyboard_version = sessions.KEYBOARD_VERSION
+    return sessions.keyboard(sessions.current(db, user) is not None)
+
+
+def _announce(db: Session, user: User):
+    """People who have not got the current keyboard get it once, with what changed."""
+    state = state_of(db, user)
+    if state.keyboard_version >= sessions.KEYBOARD_VERSION:
+        return
+    state.keyboard_version = sessions.KEYBOARD_VERSION
+    outbox.push(
+        db,
+        user,
+        "✨ <b>Бот обновился</b>\n"
+        "Ассистент теперь работает в сессиях: нажмите «🟢 Новая сессия» и пишите как в "
+        "обычном чате. Вес, замеры и фото прогресса записываются кнопками внизу и без "
+        "сессии. /help — подробнее.",
+        keyboard=sessions.keyboard(sessions.current(db, user) is not None),
+    )
 
 
 # /start and commands
@@ -98,7 +143,15 @@ def start(db: Session, info: dict, payload: str | None) -> dict:
         if created
         else "С возвращением! 👋\n\n"
     )
-    return view(greeting + HELP, site_row())
+    keyboard = _keyboard(db, user)
+    db.commit()
+    return view(greeting + HELP, keyboard=keyboard)
+
+
+def help_view(db: Session, user: User) -> dict:
+    keyboard = _keyboard(db, user)
+    db.commit()
+    return view(HELP, keyboard=keyboard)
 
 
 def link(db: Session, info: dict, code: str | None) -> dict:
@@ -112,7 +165,7 @@ def link(db: Session, info: dict, code: str | None) -> dict:
         text = users.link_telegram(db, code, info)
     except DomainError as error:
         return view(escape(error.message))
-    return view(f"{text}\n\n{HELP}", site_row())
+    return view(f"{text}\n\n{HELP}", keyboard=sessions.keyboard(False))
 
 
 def today(db: Session, user: User) -> dict:
@@ -122,12 +175,30 @@ def today(db: Session, user: User) -> dict:
     return views.today_view(summary, summary["day"], weight, change)
 
 
-def new_conversation(db: Session, user: User) -> dict:
+def new_session(db: Session, user: User) -> dict:
+    """/new and the "New session" button."""
+    if get_settings().ai_runner == "off":
+        return view(f"😕 {ERRORS['off']}")
+    _, previous = sessions.start(db, user)
     state = state_of(db, user)
-    state.context_from = utcnow()
     state.focus_meal_id = None
+    state.keyboard_version = sessions.KEYBOARD_VERSION
     db.commit()
-    return view("🆕 Начали новый разговор. Записи и память на месте.")
+    return sessions.started_view(previous)
+
+
+def end_session(db: Session, user: User) -> dict:
+    """/end and the "End session" button."""
+    session = sessions.current(db, user)
+    if not session:
+        db.commit()
+        return view("Сессия уже закрыта.", keyboard=sessions.keyboard(False))
+    text = sessions.finish(db, user, session, "user")
+    state = state_of(db, user)
+    state.focus_meal_id = None
+    state.keyboard_version = sessions.KEYBOARD_VERSION
+    db.commit()
+    return sessions.ended_view(text, "user")
 
 
 def progress_mode(db: Session, user: User) -> dict:
@@ -136,8 +207,9 @@ def progress_mode(db: Session, user: User) -> dict:
     state.mode_until = utcnow() + PROGRESS_MODE
     db.commit()
     return view(
-        "📸 Пришлите следующим сообщением фото тела (можно несколько сразу) — сохраню в "
-        "альбом прогресса. Подпись станет комментарием. Эти фото не уходят в AI.",
+        "📸 Пришлите следующим сообщением фото тела (можно несколько сразу: спереди, сзади, "
+        "сбоку). Сохраню их одной записью в альбом прогресса, подпись станет заметкой. Эти "
+        "фото не уходят ассистенту.",
         [[views.button("✖️ Отмена", "p:x")]],
     )
 
@@ -146,6 +218,60 @@ def app_link() -> dict:
     if not get_settings().app_url:
         return view("Адрес сайта пока не настроен.")
     return view("Дневник, графики и фото — на сайте:", site_row())
+
+
+def ask_weight(db: Session, user: User) -> dict:
+    state = state_of(db, user)
+    state.awaiting, state.awaiting_until = "weight", utcnow() + AWAITING
+    last = progress.latest_weight(db, user.id)
+    db.commit()
+    hint = (
+        f"\nПоследний: {views.n(last.weight_kg, 1)} кг, {last.measured_on:%d.%m}." if last else ""
+    )
+    return view(
+        f"⚖️ Пришлите вес числом, например <b>82,4</b>.{hint}",
+        [[views.button("✖️ Отмена", "aw:x")]],
+    )
+
+
+def ask_measurements(db: Session, user: User) -> dict:
+    state = state_of(db, user)
+    state.awaiting, state.awaiting_until = "measure", utcnow() + AWAITING
+    db.commit()
+    names = ", ".join(name.lower() for name, _ in MEASUREMENTS.values())
+    return view(
+        "📏 Пришлите замеры одной строкой, можно только часть:\n"
+        "<i>талия 82, бедра 98, грудь 101</i>\n\n"
+        f"Знаю: {names}.",
+        [[views.button("✖️ Отмена", "aw:x")]],
+    )
+
+
+def more_view() -> dict:
+    rows = site_row("🌐 Дневник на сайте") + site_row(
+        "⏰ Напоминания", "/profile?section=reminders"
+    )
+    rows.append([views.button("❓ Как пользоваться", "h:help")])
+    return view("⚙️ <b>Еще</b>", rows)
+
+
+def keyboard_action(db: Session, user: User, label: str) -> dict:
+    """A tap on the keyboard under the input field: never goes to the assistant."""
+    if label == sessions.NEW:
+        return new_session(db, user)
+    if label == sessions.END:
+        return end_session(db, user)
+    if label == sessions.TODAY:
+        return today(db, user)
+    if label == sessions.WEIGHT:
+        return ask_weight(db, user)
+    if label == sessions.MEASURE:
+        return ask_measurements(db, user)
+    if label == sessions.PROGRESS:
+        return progress_mode(db, user)
+    if label == sessions.REVIEW:
+        return review_menu()
+    return more_view()
 
 
 # Messages
@@ -164,19 +290,109 @@ def _with_undo(db: Session, user: User, text: str, created: list) -> dict:
     return view(text, [[views.button("↩️ Отменить", f"u:{action.id}")]])
 
 
-def _answer(db: Session, user: User, result: dict) -> dict:
-    db.add(ChatMessage(user_id=user.id, role="assistant", text=result["text"]))
+def _answer(db: Session, user: User, result: dict, session_id: int | None = None) -> dict:
+    db.add(
+        ChatMessage(user_id=user.id, role="assistant", text=result["text"], session_id=session_id)
+    )
     db.commit()
     return {"view": result, "job_id": None}
 
 
-def parse_weight(text: str) -> float | None:
+def parse_weight(text: str, loose: bool = False) -> float | None:
+    """ "вес 82.4", "82,4 кг"; a bare whole number only when the bot asked for the weight."""
     match = WEIGHT.match(text or "")
     if not match:
         return None
     value = float(match["value"].replace(",", "."))
     explicit = match["word"] or match["unit"] or "." in match["value"] or "," in match["value"]
-    return value if explicit and 25 <= value <= 300 else None
+    return value if (explicit or loose) and 25 <= value <= 300 else None
+
+
+def parse_measurements(text: str) -> dict[str, float] | None:
+    """ "талия 82, бедра 98" -> {"waist": 82, "hips": 98}; None unless that is all it says."""
+    found: dict[str, float] = {}
+    for match in MEASURE.finditer(text or ""):
+        kind = next(name for name in MEASURE_NAMES if match[name])
+        found[kind] = float(match["value"].replace(",", "."))
+    if not found or not LEFTOVER.match(MEASURE.sub("", text)):
+        return None
+    return found
+
+
+def _save_weight(db: Session, user: User, value: float, session_id: int | None) -> dict:
+    entry = progress.add_weight(db, user, value, source="bot")
+    db.flush()
+    change = progress.weight_change(db, user, 7)
+    tail = f" ({'+' if change > 0 else ''}{views.n(change, 1)} за неделю)" if change else ""
+    reply = f"⚖️ Записал вес: {views.n(entry.weight_kg, 1)} кг{tail}"
+    return _answer(db, user, _with_undo(db, user, reply, [["weight", entry.id]]), session_id)
+
+
+def _save_measurements(
+    db: Session, user: User, values: dict[str, float], session_id: int | None
+) -> dict:
+    entries = []
+    for kind, value in values.items():
+        try:
+            entries.append(progress.add_measurement(db, user, kind, value, source="bot"))
+        except DomainError:
+            continue
+    if not entries:
+        return _answer(db, user, view("Не похоже на замеры: проверьте числа."), session_id)
+    saved = ", ".join(
+        f"{MEASUREMENTS[e.kind][0].lower()} {views.n(e.value, 1)}"
+        f"{'%' if e.kind == 'body_fat' else ' см'}"
+        for e in entries
+    )
+    created = [["measurement", e.id] for e in entries]
+    return _answer(db, user, _with_undo(db, user, f"📏 Записал: {saved}", created), session_id)
+
+
+def _save_progress(db: Session, user: User, saved: list[Media], text: str, session_id) -> dict:
+    note = PROGRESS_WORDS.sub("", text).strip(" ,.:-—") or None
+    created = [
+        ["progress_photo", progress.make_progress_photo(db, user, item, pose=pose, note=note).id]
+        for item, pose in zip(saved, progress.poses_for(len(saved)), strict=True)
+    ]
+    count = f" ({len(saved)} шт.)" if len(saved) > 1 else ""
+    return _answer(
+        db, user, _with_undo(db, user, f"📸 Сохранил фото прогресса{count}", created), session_id
+    )
+
+
+def queue_turn(db: Session, user: User, message: ChatMessage, status_message_id=None) -> AiJob:
+    """The assistant answers the session's new messages together: a job waiting to start
+    takes this one too and waits a little longer for more."""
+    later = utcnow() + timedelta(seconds=get_settings().ai_debounce)
+    waiting = db.scalar(
+        select(AiJob).where(
+            AiJob.user_id == user.id, AiJob.status == "queued", AiJob.kind == "turn"
+        )
+    )
+    if waiting:
+        waiting.message_id = message.id
+        waiting.not_before = later
+        return waiting
+    job = AiJob(
+        user_id=user.id,
+        message_id=message.id,
+        status_message_id=status_message_id,
+        not_before=later,
+    )
+    db.add(job)
+    db.flush()
+    return job
+
+
+def _outside_session(message: ChatMessage, photos: bool) -> dict:
+    rows = [[views.button("🟢 Начать сессию с этим сообщением", f"s:go:{message.id}")]]
+    if photos:
+        rows.append([views.button("📸 Это фото прогресса", f"s:pr:{message.id}")])
+    return view(
+        "💤 <b>Сессия не начата</b>\n"
+        "Это сообщение пока никуда не ушло. Начать сессию, чтобы ассистент его увидел?",
+        rows,
+    )
 
 
 def receive(
@@ -188,15 +404,23 @@ def receive(
     telegram_message_id: int | None,
     status_message_id: int | None,
 ) -> dict:
-    """Saves the message; answers at once when no AI is needed, else queues a job."""
+    """Keyboard taps, numbers the bot asked for, weights and measurements are handled
+    here at once; everything else goes to the assistant only inside a session."""
     text = (text or "").strip()[:4000]
     user.last_seen_at = utcnow()
+    if text in sessions.KEYS and not photos:
+        return {"view": keyboard_action(db, user, text), "job_id": None}
+
+    _announce(db, user)
+    session = sessions.current(db, user)
+    session_id = session.id if session else None
     message = ChatMessage(
         user_id=user.id,
         role="user",
         text=text,
         photos=len(photos),
         telegram_message_id=telegram_message_id,
+        session_id=session_id,
     )
     db.add(message)
     db.flush()
@@ -205,41 +429,48 @@ def receive(
         for data in photos
     ]
     state = state_of(db, user)
-    armed = state.mode == "progress" and bool(state.mode_until and state.mode_until > utcnow())
-    # /progress covers the next message only: photos in it are body photos, anything else
-    # means the person moved on.
+    now = utcnow()
+    if session:
+        sessions.touch(session)
+    armed = state.mode == "progress" and bool(state.mode_until and state.mode_until > now)
+    awaiting = state.awaiting if state.awaiting_until and state.awaiting_until > now else None
+    # /progress and the number prompts cover the next message only.
     state.mode = None
+    state.awaiting = None
 
+    # What the bot answers by itself stays out of the session's conversation, so the
+    # assistant never records it a second time.
     # Body photos: /progress right before, or the caption says so; they never leave the
-    # server. Every other photo is treated as food by the assistant.
+    # server.
     if saved and (armed or PROGRESS_WORDS.match(text)):
-        note = PROGRESS_WORDS.sub("", text).strip(" ,.:-—") or None
-        created = [
-            [
-                "progress_photo",
-                progress.make_progress_photo(db, user, item, pose=pose, note=note).id,
-            ]
-            for item, pose in zip(saved, progress.poses_for(len(saved)), strict=True)
-        ]
-        count = f" ({len(saved)} шт.)" if len(saved) > 1 else ""
-        return _answer(
-            db, user, _with_undo(db, user, f"📸 Сохранил фото прогресса{count}", created)
-        )
+        message.session_id = None
+        return _save_progress(db, user, saved, text, None)
+    if not saved:
+        weight = parse_weight(text, loose=awaiting == "weight")
+        values = parse_measurements(text) if not weight or awaiting == "measure" else None
+        if weight and awaiting != "measure":
+            message.session_id = None
+            return _save_weight(db, user, weight, None)
+        if values:
+            message.session_id = None
+            return _save_measurements(db, user, values, None)
+        # A miss with numbers is a typo; words mean the person moved on.
+        if awaiting in ("weight", "measure") and re.search(r"\d", text):
+            message.session_id = None
+            state.awaiting, state.awaiting_until = awaiting, now + AWAITING
+            hint = (
+                "Не похоже на вес. Пришлите число, например 82,4."
+                if awaiting == "weight"
+                else "Не понял замеры. Пример: <i>талия 82, бедра 98</i>."
+            )
+            return _answer(db, user, view(hint))
 
-    weight = parse_weight(text) if not saved else None
-    if weight:
-        entry = progress.add_weight(db, user, weight, source="bot")
-        db.flush()
-        change = progress.weight_change(db, user, 7)
-        tail = f" ({'+' if change > 0 else ''}{views.n(change, 1)} за неделю)" if change else ""
-        reply = f"⚖️ Записал вес: {views.n(entry.weight_kg, 1)} кг{tail}"
-        return _answer(db, user, _with_undo(db, user, reply, [["weight", entry.id]]))
-
+    if not session:
+        db.commit()
+        return {"view": _outside_session(message, bool(saved)), "job_id": None}
     if get_settings().ai_runner == "off":
-        return _answer(db, user, view(f"😕 {ERRORS['off']}"))
-
-    job = AiJob(user_id=user.id, message_id=message.id, status_message_id=status_message_id)
-    db.add(job)
+        return _answer(db, user, view(f"😕 {ERRORS['off']}"), session_id)
+    job = queue_turn(db, user, message, status_message_id)
     db.commit()
     return {"view": None, "job_id": job.id}
 
@@ -266,6 +497,7 @@ def press(db: Session, user: User, data: str, message_id: int | None = None) -> 
     """-> {"view": message replacement or None, "toast": short note, "message": new message,
     "job_id": a started assistant job}"""
     parts = data.split(":")
+    _announce(db, user)
     try:
         return _press(db, user, parts, message_id)
     except DomainError as error:
@@ -282,20 +514,28 @@ REVIEW_PERIODS = {1: "сегодня", 7: "неделю", 14: "две недел
 def review_menu() -> dict:
     labels = {1: "Сегодня", 7: "Неделя", 14: "2 недели", 30: "Месяц"}
     return view(
-        "📊 <b>Разбор рациона</b>\n\nЗа какой период? Посмотрю, что получается хорошо и что "
-        "можно улучшить.",
+        "🧾 <b>Разбор рациона</b>\n\nЗа какой период? Посмотрю, что получается хорошо и что "
+        "можно улучшить. Разбор откроет сессию, после него можно задать вопросы.",
         [[views.button(labels[days], f"rv:{days}") for days in REVIEW_PERIODS]],
     )
 
 
-def start_review(db: Session, user: User, days: int, status_message_id: int | None = None) -> AiJob:
-    """Queues the assistant's review of the last `days` days (from a button or a reminder)."""
+def start_review(
+    db: Session, user: User, days: int, status_message_id: int | None = None
+) -> tuple[AiJob, bool]:
+    """Queues the assistant's review of the last `days` days in a session (a new one if
+    needed, so follow-up questions work). -> (job, whether a session was started)."""
     if days not in REVIEW_PERIODS:
         raise DomainError("Такого периода нет")
     if get_settings().ai_runner == "off":
         raise DomainError(ERRORS["off"])
+    session, started = sessions.ensure(db, user)
+    sessions.touch(session)
     message = ChatMessage(
-        user_id=user.id, role="user", text=f"Разбор рациона за {REVIEW_PERIODS[days]}"
+        user_id=user.id,
+        role="user",
+        text=f"Разбор рациона за {REVIEW_PERIODS[days]}",
+        session_id=session.id,
     )
     db.add(message)
     db.flush()
@@ -308,12 +548,22 @@ def start_review(db: Session, user: User, days: int, status_message_id: int | No
     )
     db.add(job)
     db.flush()
-    return job
+    return job, started
 
 
 def _press(db: Session, user: User, parts: list[str], message_id: int | None) -> dict:
     head = parts[0]
     result = {"view": None, "toast": None, "message": None, "job_id": None}
+    if head == "s":
+        return _press_session(db, user, parts, result)
+    if head == "aw":
+        state_of(db, user).awaiting = None
+        db.commit()
+        result["view"] = view("Хорошо, отменил.")
+        return result
+    if head == "h":
+        result["message"] = help_view(db, user)
+        return result
     if head == "pin":
         if parts[1] == "reset" and photo_lock.confirm_reset(user.profile):
             text = "🔓 Код для фото прогресса сброшен. Новый можно задать в профиле на сайте."
@@ -327,10 +577,12 @@ def _press(db: Session, user: User, parts: list[str], message_id: int | None) ->
         return result
     if head == "rv":
         days = int(parts[1])
-        job = start_review(db, user, days, message_id)
+        job, started = start_review(db, user, days)
         db.commit()
         result["job_id"] = job.id
         result["view"] = view(f"⏳ Разбираю рацион за {REVIEW_PERIODS[days]}…")
+        if started:
+            result["message"] = sessions.started_view()
         return result
     if head == "m":
         action, meal = parts[1], _meal(db, user, parts[2])
@@ -342,13 +594,21 @@ def _press(db: Session, user: User, parts: list[str], message_id: int | None) ->
             meal.meal_type = views.TYPE_CODES[parts[3]]
             db.commit()
         elif action == "e":
+            # A fix is said in words to the assistant: that takes a session.
+            session, started = sessions.ensure(db, user)
+            sessions.touch(session)
             state = state_of(db, user)
             state.focus_meal_id = meal.id
             db.commit()
-            result["message"] = view(
+            ask = (
                 f"✏️ Что исправить в «{escape(meal.title)}»? Напишите, например: "
                 "<i>«риса было 200 г»</i>, <i>«без соуса»</i> или <i>«это был ужин»</i>."
             )
+            if started:
+                start_view = sessions.started_view()
+                result["message"] = {**start_view, "text": f"{start_view['text']}\n\n{ask}"}
+            else:
+                result["message"] = view(ask)
             return result
         elif action == "x":
             title = meal.title
@@ -402,7 +662,7 @@ def _press(db: Session, user: User, parts: list[str], message_id: int | None) ->
     if head == "p" and parts[1] == "x":
         state_of(db, user).mode = None
         db.commit()
-        result["view"] = view("Хорошо, следующее фото посчитаю едой.")
+        result["view"] = view("Хорошо, это отменил.")
         return result
 
     if head == "r" and parts[1] == "off":
@@ -416,6 +676,40 @@ def _press(db: Session, user: User, parts: list[str], message_id: int | None) ->
         )
         return result
     raise ValueError(head)
+
+
+def _press_session(db: Session, user: User, parts: list[str], result: dict) -> dict:
+    """s:go:<message> starts a session with a message sent outside one; s:pr:<message>
+    files its photos as progress photos instead."""
+    message = db.get(ChatMessage, int(parts[2]))
+    if (
+        not message
+        or message.user_id != user.id
+        or message.session_id
+        or message.created_at < utcnow() - timedelta(days=1)
+    ):
+        raise DomainError("Сообщение уже обработано или устарело")
+    if parts[1] == "pr":
+        photos = db.scalars(
+            select(Media).where(Media.message_id == message.id, Media.kind == "chat")
+        ).all()
+        if not photos:
+            raise DomainError("В сообщении нет фото")
+        answered = _save_progress(db, user, list(photos), message.text, None)
+        result["view"] = answered["view"]
+        return result
+    if get_settings().ai_runner == "off":
+        raise DomainError(ERRORS["off"])
+    session, started = sessions.ensure(db, user)
+    sessions.touch(session)
+    message.session_id = session.id
+    job = queue_turn(db, user, message)
+    job.not_before = utcnow()
+    db.commit()
+    result["job_id"] = job.id
+    result["view"] = view("↪️ Отправил ассистенту.")
+    result["message"] = sessions.started_view() if started else None
+    return result
 
 
 def pending_jobs(db: Session, user: User) -> int:

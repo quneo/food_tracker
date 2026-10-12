@@ -63,7 +63,9 @@ def outbox(sessions):
 
 @pytest.fixture
 def person(make_person):
-    return make_person(7001, "Вадим")
+    person = make_person(7001, "Вадим")
+    person.start_session()  # the assistant only hears messages inside a session
+    return person
 
 
 def test_photo_becomes_a_draft_and_is_saved(person, runner, worker, sessions):
@@ -83,7 +85,7 @@ def test_photo_becomes_a_draft_and_is_saved(person, runner, worker, sessions):
     call = runner.calls[0]
     assert len(call["images"]) == 1 and call["images"][0][:3] == b"\xff\xd8\xff"
     assert "## Новое сообщение пользователя" in call["prompt"]
-    assert "обед" in call["prompt"] and "К сообщению приложено фото: 1" in call["prompt"]
+    assert "обед" in call["prompt"] and "Фото 1: новое" in call["prompt"]
     assert call["schema"] == strict_schema(TurnResult)
 
     [message] = outbox(sessions)
@@ -269,7 +271,7 @@ def test_progress_mode_covers_one_photo(person, runner, worker):
     assert len(person.web.get("/api/progress-photos").json()) == 2
     # Cancelled, or followed by a text message: no body photo either.
     person.bot.post("/api/bot/progress-mode")
-    assert "едой" in person.press("p:x")["view"]["text"]
+    assert "отменил" in person.press("p:x")["view"]["text"]
     runner.answers.append({"reply": "Ок", "actions": []})
     assert person.say(photos=[jpeg()]).json()["job_id"]
     run_jobs(worker)

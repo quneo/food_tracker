@@ -157,10 +157,14 @@ def _already_done(db: Session, reminder: Reminder, tz_name: str) -> bool:
 
 
 def _start_review(db: Session, user) -> bool:
+    """The weekly review opens a session, so questions about it can follow."""
+    from app.chat import sessions
     from app.chat.service import start_review
 
     try:
-        start_review(db, user, 7)
+        _, started = start_review(db, user, 7)
+        if started:
+            outbox.push(db, user, **sessions.started_view())
     except DomainError as error:
         log.info("weekly review for user %s skipped: %s", user.id, error.message)
         return False

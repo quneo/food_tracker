@@ -102,3 +102,33 @@ async def test_backend_errors_are_readable():
     assert missing.value.status == 401 and "/start" in str(missing.value)
     with pytest.raises(ApiError, match="Доступ закрыт"):
         await backend.call("GET", "bot/today", 1)
+
+
+def test_keyboard_under_the_input_field():
+    keyboard = render.markup({"text": "x", "keyboard": [["🟢 Новая сессия", "📊 Сегодня"]]})
+    assert [[b.text for b in row] for row in keyboard.keyboard] == [
+        ["🟢 Новая сессия", "📊 Сегодня"]
+    ]
+    assert keyboard.resize_keyboard and keyboard.is_persistent
+
+
+async def test_a_keyboard_message_is_sent_not_edited():
+    bot = fake_bot()
+    view = {"text": "🟢 Сессия началась", "keyboard": [["⏹ Завершить сессию"]]}
+    assert await send(bot, 7, view, edit_message_id=5) == 42
+    bot.edit_message_text.assert_not_awaited()
+
+
+async def test_typing_is_shown_while_the_assistant_works():
+    from app.delivery import show_typing
+
+    bot = SimpleNamespace(send_chat_action=AsyncMock())
+    backend = SimpleNamespace(call=AsyncMock(return_value=[7, 8]))
+    shown: dict[int, float] = {}
+    await show_typing(bot, backend, shown)
+    await show_typing(bot, backend, shown)  # not again within a few seconds
+    assert bot.send_chat_action.await_count == 2
+    assert {call.args for call in bot.send_chat_action.await_args_list} == {
+        (7, "typing"),
+        (8, "typing"),
+    }

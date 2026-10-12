@@ -24,7 +24,8 @@ async def send(bot: Bot, chat_id: int, view: dict, edit_message_id: int | None =
     Returns the id of the message that shows it."""
     body, parse_mode = render.text(view)
     keyboard = render.markup(view)
-    if edit_message_id:
+    # A message with the input-field keyboard can't be edited into place.
+    if edit_message_id and not view.get("keyboard"):
         try:
             await bot.edit_message_text(
                 body,
@@ -81,10 +82,27 @@ async def deliver_once(bot: Bot, backend: Backend) -> int:
     return len(items)
 
 
+TYPING_EVERY = 4.5  # Telegram shows "typing…" for about five seconds
+
+
+async def show_typing(bot: Bot, backend: Backend, shown: dict[int, float]):
+    """Keeps "typing…" in the chats where the assistant is working on an answer."""
+    now = asyncio.get_running_loop().time()
+    for chat_id in await backend.call("GET", "bot/typing"):
+        if now - shown.get(chat_id, 0) >= TYPING_EVERY:
+            shown[chat_id] = now
+            try:
+                await bot.send_chat_action(chat_id, "typing")
+            except (TelegramBadRequest, TelegramForbiddenError, TelegramNetworkError):
+                pass
+
+
 async def outbox_loop(bot: Bot, backend: Backend):
+    shown: dict[int, float] = {}
     while True:
         try:
             await deliver_once(bot, backend)
+            await show_typing(bot, backend, shown)
         except ApiError as error:
             log.warning("outbox: %s", error)
         except Exception:

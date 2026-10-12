@@ -3,12 +3,15 @@ person also carry X-Telegram-User."""
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from app.ai.jobs import worker
+from app.ai.models import AiJob
 from app.api.deps import BotUser, Db, Files, require_bot
 from app.chat import outbox, service
 from app.chat.models import OutboxMessage
 from app.core.exceptions import DomainError
+from app.users.models import User
 
 router = APIRouter(prefix="/bot", tags=["bot"], dependencies=[Depends(require_bot)])
 MAX_PHOTOS = 6
@@ -102,8 +105,18 @@ def today(user: BotUser, db: Db):
 
 
 @router.post("/new")
-def new_conversation(user: BotUser, db: Db):
-    return {"view": service.new_conversation(db, user)}
+def new_session(user: BotUser, db: Db):
+    return {"view": service.new_session(db, user)}
+
+
+@router.post("/end")
+def end_session(user: BotUser, db: Db):
+    return {"view": service.end_session(db, user)}
+
+
+@router.get("/help")
+def help_(user: BotUser, db: Db):
+    return {"view": service.help_view(db, user)}
 
 
 @router.post("/progress-mode")
@@ -114,6 +127,19 @@ def progress_mode(user: BotUser, db: Db):
 @router.get("/app")
 def app_link(user: BotUser):
     return {"view": service.app_link()}
+
+
+@router.get("/typing")
+def typing(db: Db) -> list[int]:
+    """Chats where the assistant is working on an answer: the bot shows "typing…"."""
+    return list(
+        db.scalars(
+            select(User.telegram_id)
+            .join(AiJob, AiJob.user_id == User.id)
+            .where(AiJob.status.in_(["queued", "running"]), User.telegram_id.is_not(None))
+            .distinct()
+        )
+    )
 
 
 @router.get("/outbox")

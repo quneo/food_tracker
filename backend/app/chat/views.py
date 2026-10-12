@@ -7,6 +7,10 @@ Callback data (64 bytes max):
   m:d:<id>   ask to delete saved     m:dd:<id> delete saved    m:v:<id> show again
   a:y:<id> / a:n:<id>  answer a pending action      u:<id>  undo
   l:y:<code> / l:n:<code>  web sign-in             r:off:<id>  reminder off
+  s:go:<msg>  start a session with a message sent outside one
+  s:pr:<msg>  file that message's photos as progress   aw:x  cancel a number prompt
+  rv:<days>   review the diet (opens a session)          h:help  how to use
+  pin:reset / pin:keep  forgotten photo code           p:x  cancel /progress
 """
 
 from datetime import date

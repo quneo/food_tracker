@@ -38,7 +38,9 @@ def outbox(sessions):
 
 @pytest.fixture
 def person(make_person):
-    return make_person(9101, "Вадим")
+    person = make_person(9101, "Вадим")
+    person.start_session()  # the assistant only hears messages inside a session
+    return person
 
 
 def test_products_on_the_site(person, make_person, files):
@@ -147,8 +149,9 @@ def test_review_from_the_menu(person, runner, worker, sessions):
     prompt = runner.calls[0]["prompt"]
     assert "# Task: a review of the diet" in prompt
     assert "## Статистика за 7 дн." in prompt and "Дней с записями 1 из 7" in prompt
+    # The menu says "reviewing…"; the review itself comes as a new message.
     [message] = outbox(sessions)
-    assert message.payload["edit_message_id"] == 321
+    assert "edit_message_id" not in message.payload
     assert message.payload["text"].startswith("<b>Что хорошо</b>")
 
 
@@ -161,4 +164,7 @@ def test_weekly_review_reminder_starts_a_job(person, sessions):
         assert reminders.send_due(db) == 1
         job = db.scalar(select(AiJob))
         assert job.kind == "review" and job.days == 7
-        assert db.scalars(select(OutboxMessage)).all() == []
+        # The review opens a session (this person had none), so questions can follow.
+        [message] = db.scalars(select(OutboxMessage)).all()
+        assert message.payload["text"].startswith("🟢 <b>Сессия началась</b>")
+        assert message.payload["keyboard"][0][0] == "⏹ Завершить сессию"

@@ -1,5 +1,5 @@
-"""Telegram updates -> backend. Commands and buttons are optional extras: any text or
-photo goes to the assistant, which works out what the person wants."""
+"""Telegram updates -> backend. The backend decides what a message means: a tap on the
+keyboard under the input field, a weight, a message for the assistant in a session."""
 
 import asyncio
 import logging
@@ -17,13 +17,14 @@ log = logging.getLogger(__name__)
 ALBUM_WAIT = 1.2  # seconds to collect the photos of one album
 MAX_PHOTOS = 6
 COMMANDS = [
+    BotCommand(command="new", description="Новая сессия с ассистентом"),
+    BotCommand(command="end", description="Завершить сессию"),
     BotCommand(command="today", description="Итоги дня"),
     BotCommand(command="review", description="Разбор рациона"),
     BotCommand(command="progress", description="Сохранить фото прогресса"),
-    BotCommand(command="new", description="Начать новый разговор"),
     BotCommand(command="app", description="Дневник на сайте"),
     BotCommand(command="link", description="Привязать Telegram ключом с сайта"),
-    BotCommand(command="help", description="Что я умею"),
+    BotCommand(command="help", description="Как пользоваться"),
 ]
 albums: dict[str, list[Message]] = {}
 background: set[asyncio.Task] = set()
@@ -69,7 +70,7 @@ async def start(message: Message, command: CommandObject, bot: Bot):
 
 @router.message(Command("help"))
 async def help_(message: Message, bot: Bot):
-    await reply(message, bot, backend.call, "POST", "bot/start", json={"user": profile(message)})
+    await reply(message, bot, backend.call, "GET", "bot/help", message.from_user.id)
 
 
 @router.message(Command("today"))
@@ -85,6 +86,11 @@ async def review(message: Message, bot: Bot):
 @router.message(Command("new"))
 async def new(message: Message, bot: Bot):
     await reply(message, bot, backend.call, "POST", "bot/new", message.from_user.id)
+
+
+@router.message(Command("end"))
+async def end(message: Message, bot: Bot):
+    await reply(message, bot, backend.call, "POST", "bot/end", message.from_user.id)
 
 
 @router.message(Command("progress"))
@@ -111,8 +117,8 @@ async def link(message: Message, command: CommandObject, bot: Bot):
 
 
 async def forward(messages: list[Message], bot: Bot):
-    """Sends a message (or an album) to the backend. The "thinking" message is replaced
-    by the answer: at once for simple things, via the outbox when the assistant thinks."""
+    """Sends a message (or an album) to the backend. A quick answer comes back at once;
+    the assistant's answer comes through the outbox, with "typing…" shown meanwhile."""
     first = messages[0]
     photos = [
         m
@@ -120,7 +126,8 @@ async def forward(messages: list[Message], bot: Bot):
         if m.photo or (m.document and m.document.mime_type or "").startswith("image/")
     ]
     text = next((m.text or m.caption for m in messages if m.text or m.caption), "") or ""
-    status = await first.answer("🔍 Смотрю на фото…" if photos else "💭 Думаю…")
+    if photos:
+        await bot.send_chat_action(first.chat.id, "upload_photo")
     try:
         files = []
         for number, item in enumerate(photos[:MAX_PHOTOS]):
@@ -131,26 +138,21 @@ async def forward(messages: list[Message], bot: Bot):
             "POST",
             "bot/messages",
             first.from_user.id,
-            data={
-                "text": text,
-                "telegram_message_id": str(first.message_id),
-                "status_message_id": str(status.message_id),
-            },
+            data={"text": text, "telegram_message_id": str(first.message_id)},
             files=files or None,
         )
         if result.get("view"):
-            await send(bot, first.chat.id, result["view"], status.message_id)
+            await send(bot, first.chat.id, result["view"])
+        elif result.get("job_id"):
+            await bot.send_chat_action(first.chat.id, "typing")
         if len(photos) > MAX_PHOTOS:
             await first.answer(f"Взял первые {MAX_PHOTOS} фото из {len(photos)}.")
     except ApiError as error:
-        await send(bot, first.chat.id, {"text": str(error)}, status.message_id)
+        await send(bot, first.chat.id, {"text": str(error)})
     except Exception:
         log.exception("forwarding failed")
         await send(
-            bot,
-            first.chat.id,
-            {"text": "Не получилось обработать сообщение. Попробуйте еще раз."},
-            status.message_id,
+            bot, first.chat.id, {"text": "Не получилось обработать сообщение. Попробуйте еще раз."}
         )
 
 
@@ -213,3 +215,5 @@ async def press(callback: CallbackQuery, bot: Bot):
         await send(bot, message.chat.id, result["view"], message.message_id)
     if result.get("message") and message:
         await send(bot, message.chat.id, result["message"])
+    if result.get("job_id") and message:
+        await bot.send_chat_action(message.chat.id, "typing")

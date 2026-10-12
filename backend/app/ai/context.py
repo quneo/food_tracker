@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.ai import memory
 from app.ai.models import MemoryFact
-from app.chat.models import ChatMessage, ChatState
+from app.chat.models import ChatMessage, ChatSession, ChatState
 from app.core.timeutil import local_now, to_local, zone
 from app.nutrition.models import Meal, MealItem
 from app.nutrition.targets import age, suggest
@@ -40,6 +40,8 @@ STATS_WORDS = re.compile(
     re.IGNORECASE,
 )
 RECENT_MESSAGES = 12
+# A session is shown whole, up to this many of its latest messages.
+SESSION_MESSAGES = 40
 
 
 def n(value: float | None, digits: int = 0) -> str:
@@ -55,14 +57,25 @@ def macros(record) -> str:
 
 class Context:
     def __init__(
-        self, db: Session, user: User, message: ChatMessage, review_days: int | None = None
+        self,
+        db: Session,
+        user: User,
+        message: ChatMessage,
+        review_days: int | None = None,
+        batch: list[ChatMessage] | None = None,
+        session: ChatSession | None = None,
+        photo_notes: list[str] | None = None,
     ):
         self.review_days = review_days
         self.db = db
         self.user = user
         self.message = message
-        self.text = message.text
-        self.photos = message.photos
+        # The new messages answered at once (several when sent in a quick row).
+        self.batch = batch or [message]
+        self.session = session
+        self.photo_notes = photo_notes or []
+        self.text = "\n".join(item.text for item in self.batch if item.text)
+        self.photos = sum(item.photos for item in self.batch)
         self.tz = zone(user.profile.timezone)
         self.now = local_now(self.tz)
         self.today = self.now.date()
@@ -415,6 +428,8 @@ class Context:
         )
 
     def section_conversation(self) -> str:
+        if self.session:
+            return self.section_session()
         since = self.now.replace(tzinfo=None) - timedelta(hours=12)
         query = (
             select(ChatMessage)
@@ -434,6 +449,28 @@ class Context:
             text = message.text if len(message.text) <= 600 else message.text[:600] + "…"
             lines.append(f"[{local:%H:%M}] {who}{photos}: {text}")
         return "## Недавний диалог\n" + "\n".join(lines) if lines else ""
+
+    def section_session(self) -> str:
+        """Everything said in this session before the new messages."""
+        messages = self.db.scalars(
+            select(ChatMessage)
+            .where(
+                ChatMessage.session_id == self.session.id,
+                ChatMessage.id < self.batch[0].id,
+            )
+            .order_by(ChatMessage.id.desc())
+            .limit(SESSION_MESSAGES)
+        ).all()
+        started = to_local(self.session.started_at, self.tz)
+        lines = []
+        for message in reversed(messages):
+            local = to_local(message.created_at, self.tz)
+            who = "Пользователь" if message.role == "user" else "Ассистент"
+            photos = f" [фото: {message.photos}]" if message.photos else ""
+            text = message.text if len(message.text) <= 800 else message.text[:800] + "…"
+            lines.append(f"[{local:%H:%M}] {who}{photos}: {text}")
+        body = "\n".join(lines) if lines else "- это начало сессии"
+        return f"## Сессия (начата в {started:%H:%M})\n{body}"
 
     def section_products(self) -> str:
         from app.nutrition.products import list_products
@@ -541,14 +578,37 @@ class Context:
 
     def section_message(self) -> str:
         hints = []
-        if self.photos:
+        if self.photo_notes:
+            hints.append(
+                "Приложенные фото по порядку:\n" + "\n".join(f"- {n}" for n in self.photo_notes)
+            )
+        elif self.photos:
             hints.append(f"К сообщению приложено фото: {self.photos} шт.")
         if self.state and self.state.mode == "progress":
             hints.append("Пользователь включил режим «фото прогресса»: фото — это фото тела.")
         hint = ("\n" + "\n".join(hints)) if hints else ""
-        text = self.text.strip() or "(без текста)"
-        return f"## Новое сообщение пользователя{hint}\n<<<\n{text}\n>>>"
+        if len(self.batch) == 1:
+            text = self.text.strip() or "(без текста)"
+            return f"## Новое сообщение пользователя{hint}\n<<<\n{text}\n>>>"
+        parts = []
+        for item in self.batch:
+            local = to_local(item.created_at, self.tz)
+            photos = f" [фото: {item.photos}]" if item.photos else ""
+            parts.append(f"[{local:%H:%M}]{photos} {item.text.strip() or '(без текста)'}")
+        body = "\n".join(parts)
+        return (
+            f"## Новые сообщения пользователя ({len(self.batch)}, ответь на все вместе){hint}"
+            f"\n<<<\n{body}\n>>>"
+        )
 
 
-def build(db: Session, user: User, message: ChatMessage, review_days: int | None = None) -> str:
-    return Context(db, user, message, review_days).build()
+def build(
+    db: Session,
+    user: User,
+    message: ChatMessage,
+    review_days: int | None = None,
+    batch: list[ChatMessage] | None = None,
+    session: ChatSession | None = None,
+    photo_notes: list[str] | None = None,
+) -> str:
+    return Context(db, user, message, review_days, batch, session, photo_notes).build()

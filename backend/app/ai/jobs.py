@@ -1,7 +1,9 @@
 """Background processing of assistant requests.
 
-A message becomes an AiJob (queued). The worker runs a few jobs at once (AI_MAX_PARALLEL),
-one per person at a time so a conversation keeps its order, each with a time limit.
+Messages in a session become an AiJob (queued). Messages sent in a quick row, or while
+the assistant is busy, are answered together by one job. The worker runs a few jobs at
+once (AI_MAX_PARALLEL), one per person at a time so a conversation keeps its order, each
+with a time limit.
 Database work runs in threads; the database is never held open while Codex thinks.
 The answer goes to the outbox, which the bot delivers."""
 
@@ -20,7 +22,7 @@ from app.ai.models import AiJob
 from app.ai.schemas import TurnResult
 from app.ai.strict_schema import strict_schema
 from app.chat import outbox
-from app.chat.models import ChatMessage, ChatState, PendingAction
+from app.chat.models import ChatMessage, ChatSession, ChatState, PendingAction
 from app.config import get_settings
 from app.database import SessionLocal, utcnow
 from app.media import images
@@ -32,6 +34,9 @@ log = logging.getLogger(__name__)
 SCHEMA = strict_schema(TurnResult)
 MAX_ATTEMPTS = 2
 MAX_IMAGES = 6
+# Photos sent earlier in the session go along small, so the assistant still sees them.
+EARLIER_IMAGES = 6
+EARLIER_SIDE = 512
 ERRORS = {
     "off": "AI пока не подключен. Вес можно записать сообщением «вес 82.4», "
     "а приемы пищи — на сайте.",
@@ -71,7 +76,8 @@ class Worker:
             except Exception:
                 log.exception("worker tick failed")
             try:
-                await asyncio.wait_for(self.wakeup.wait(), timeout=3)
+                # Short, so a job held back for a quick row of messages starts on time.
+                await asyncio.wait_for(self.wakeup.wait(), timeout=1)
             except TimeoutError:
                 pass
             self.wakeup.clear()
@@ -106,10 +112,11 @@ class Worker:
         with self.sessions() as db:
             busy = set(db.scalars(select(AiJob.user_id).where(AiJob.status == "running")))
             claimed = []
+            now = utcnow()
             for job in db.scalars(select(AiJob).where(AiJob.status == "queued").order_by(AiJob.id)):
                 if len(claimed) >= limit:
                     break
-                if job.user_id in busy:
+                if job.user_id in busy or (job.not_before and job.not_before > now):
                     continue
                 busy.add(job.user_id)
                 job.status = "running"
@@ -124,29 +131,60 @@ class Worker:
         with self.sessions() as db:
             job = db.get(AiJob, job_id)
             user = db.get(User, job.user_id)
-            message = db.get(ChatMessage, job.message_id)
-            photos = db.scalars(
-                select(Media).where(Media.message_id == message.id).order_by(Media.id)
-            ).all()
-            pictures = []
-            for photo in photos[:MAX_IMAGES]:
-                try:
-                    pictures.append(images.for_ai(storage.get(photo.object_key)))
-                except StorageError:
-                    log.warning("photo %s unavailable for job %s", photo.id, job_id)
+            session, batch = batch_of(db, job)
+            # Messages arriving from now on wait for the next job.
+            job.message_id = batch[-1].id
+            pictures, notes = [], []
+
+            def add(photos: list[Media], side: int, label) -> None:
+                for photo in photos:
+                    try:
+                        pictures.append(images.for_ai(storage.get(photo.object_key), side))
+                    except StorageError:
+                        log.warning("photo %s unavailable for job %s", photo.id, job_id)
+                        continue
+                    notes.append(label(len(pictures), photo))
+
+            current = photos_of(db, [message.id for message in batch])[:MAX_IMAGES]
+            sent = {message.id: message for message in batch}
+            add(
+                current,
+                images.AI_SIDE,
+                lambda n, p: f"Фото {n}: новое, {_when(sent[p.message_id], user)}",
+            )
+            if session:
+                earlier = earlier_photos(db, session, batch[0].id)
+                quoted = {
+                    m.id: m
+                    for m in db.scalars(
+                        select(ChatMessage).where(
+                            ChatMessage.id.in_([p.message_id for p in earlier])
+                        )
+                    )
+                }
+                add(
+                    earlier,
+                    EARLIER_SIDE,
+                    lambda n, p: (
+                        f"Фото {n}: раньше в этой сессии (уменьшено), "
+                        f"{_when(quoted[p.message_id], user)}"
+                    ),
+                )
             review = job.kind == "review"
             prompt = prompts.assemble(
-                context.build(db, user, message, job.days if review else None),
+                context.build(
+                    db, user, batch[-1], job.days if review else None, batch, session, notes
+                ),
                 "review" if review else "turn",
             )
-            db.commit()  # memory facts' last_used_at
+            db.commit()  # memory facts' last_used_at, the job's last message
             return prompt, pictures
 
     def finish(self, job_id: int, answer: runner.RunnerResult):
         with self.sessions() as db:
             job = db.get(AiJob, job_id)
             user = db.get(User, job.user_id)
-            message = db.get(ChatMessage, job.message_id)
+            session, batch = batch_of(db, job)
             try:
                 result = TurnResult.model_validate(answer.output)
             except ValidationError as error:
@@ -154,7 +192,7 @@ class Worker:
                 db.rollback()
                 self._fail(db, job, user, "bad_output", str(error)[:300], transient=True)
                 return
-            photos = db.scalars(select(Media).where(Media.message_id == message.id)).all()
+            photos = photos_of(db, [message.id for message in batch])
             state = db.get(ChatState, user.id)
             focus = state.focus_meal_id if state else None
             outcome = Executor(db, user, list(photos), answer.model, focus).run(result)
@@ -169,8 +207,12 @@ class Worker:
                     text="\n\n".join(
                         part for part in (result.reply, "\n".join(outcome.notes)) if part
                     ),
+                    session_id=session.id if session else None,
                 )
             )
+            if session:
+                session.answered_through_id = job.message_id
+                session.last_activity_at = utcnow()
             buttons: list = []
             cards = list(outcome.cards)
             # One card and a short reply fit in one message.
@@ -224,6 +266,12 @@ class Worker:
             log.warning("job %s failed: %s", job.id, detail)
             job.status = "failed"
             job.finished_at = utcnow()
+            # Not answered, but not asked again either: the person can repeat it.
+            message = db.get(ChatMessage, job.message_id)
+            session = db.get(ChatSession, message.session_id) if message.session_id else None
+            if session:
+                session.answered_through_id = job.message_id
+                session.last_activity_at = utcnow()
             outbox.push(
                 db, user, f"😕 {ERRORS.get(code, DEFAULT_ERROR)}", [], job.status_message_id
             )
@@ -248,6 +296,58 @@ class Worker:
         except Exception as error:
             log.exception("job %s: applying the answer failed", job_id)
             await asyncio.to_thread(self.fail, job_id, runner.RunnerError("apply", str(error)))
+
+
+def batch_of(db, job: AiJob) -> tuple[ChatSession | None, list[ChatMessage]]:
+    """The session and the person's messages this job answers: everything in the session
+    since the last answer, up to the job's message."""
+    message = db.get(ChatMessage, job.message_id)
+    session = db.get(ChatSession, message.session_id) if message.session_id else None
+    if not session or job.kind == "review":
+        return session, [message]
+    query = select(ChatMessage).where(
+        ChatMessage.session_id == session.id,
+        ChatMessage.role == "user",
+        ChatMessage.id <= message.id,
+    )
+    if session.answered_through_id:
+        query = query.where(ChatMessage.id > session.answered_through_id)
+    return session, list(db.scalars(query.order_by(ChatMessage.id))) or [message]
+
+
+def photos_of(db, message_ids: list[int]) -> list[Media]:
+    return list(
+        db.scalars(
+            select(Media)
+            .where(Media.message_id.in_(message_ids), Media.kind != "body")
+            .order_by(Media.id)
+        )
+    )
+
+
+def earlier_photos(db, session: ChatSession, before_id: int) -> list[Media]:
+    """The latest photos sent earlier in the session (never body photos)."""
+    ids = select(ChatMessage.id).where(
+        ChatMessage.session_id == session.id,
+        ChatMessage.role == "user",
+        ChatMessage.id < before_id,
+    )
+    latest = db.scalars(
+        select(Media)
+        .where(Media.message_id.in_(ids), Media.kind != "body")
+        .order_by(Media.id.desc())
+        .limit(EARLIER_IMAGES)
+    ).all()
+    return list(reversed(latest))
+
+
+def _when(message: ChatMessage, user: User) -> str:
+    from app.core.timeutil import to_local, zone
+
+    local = to_local(message.created_at, zone(user.profile.timezone))
+    text = message.text.strip()
+    quote = f" «{text[:60]}{'…' if len(text) > 60 else ''}»" if text else ""
+    return f"сообщение в {local:%H:%M}{quote}"
 
 
 worker = Worker()

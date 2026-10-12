@@ -15,6 +15,7 @@ os.environ.update(
     S3_SECRET_KEY="test-secret",
     AI_RUNNER="ssh",
     AI_SSH_TARGET="food-ai@vps.example",
+    AI_DEBOUNCE="0",
 )
 
 import hashlib
@@ -144,6 +145,11 @@ class Person:
             data={"text": text, "status_message_id": str(status_message_id)},
             files=files or None,
         )
+
+    def start_session(self) -> dict:
+        response = self.bot.post("/api/bot/new")
+        assert response.status_code == 200, response.text
+        return response.json()["view"]
 
     def press(self, data: str) -> dict:
         response = self.bot.post("/api/bot/press", json={"data": data})

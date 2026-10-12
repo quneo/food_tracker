@@ -7,6 +7,7 @@ from datetime import timedelta
 from sqlalchemy import delete, select, update
 
 from app.ai.models import AiJob
+from app.chat import sessions
 from app.chat.models import OutboxMessage, PendingAction
 from app.database import SessionLocal, utcnow
 from app.media import service as media
@@ -24,6 +25,7 @@ UNUSED_CHAT_PHOTOS = timedelta(days=7)
 def every_tick():
     with SessionLocal() as db:
         reminders.send_due(db)
+        sessions.close_idle(db)
         media.purge(db, get_storage())
 
 

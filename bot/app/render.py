@@ -1,17 +1,29 @@
 """Server-made views -> Telegram messages.
 
-A view is {"text": html, "buttons": [[{"text", "data" | "url"}]]}; the backend builds them
-so every rule stays next to the data."""
+A view is {"text": html, "buttons": [[{"text", "data" | "url"}]], "keyboard": [[label]]?};
+the backend builds them so every rule stays next to the data. "keyboard" replaces the
+keyboard under the input field (its taps come back as plain text messages)."""
 
 import re
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
 
 LIMIT = 4096
 TAG = re.compile(r"<[^>]+>")
 
 
-def markup(view: dict) -> InlineKeyboardMarkup | None:
+def markup(view: dict) -> InlineKeyboardMarkup | ReplyKeyboardMarkup | None:
+    if view.get("keyboard"):
+        return ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text=label) for label in row] for row in view["keyboard"]],
+            resize_keyboard=True,
+            is_persistent=True,
+        )
     rows = []
     for row in view.get("buttons") or []:
         buttons = []

@@ -11,8 +11,13 @@ from app.database import utcnow
 MAX_ATTEMPTS = 5
 
 
-def view(text: str, buttons: list | None = None) -> dict:
-    return {"text": text, "buttons": buttons or []}
+def view(text: str, buttons: list | None = None, keyboard: list | None = None) -> dict:
+    """A message for Telegram. `keyboard` (rows of labels) replaces the reply keyboard under
+    the input field; a message carries either inline buttons or a keyboard, not both."""
+    result = {"text": text, "buttons": buttons or []}
+    if keyboard is not None:
+        result["keyboard"] = keyboard
+    return result
 
 
 def push(
@@ -21,10 +26,11 @@ def push(
     text: str,
     buttons: list | None = None,
     edit_message_id: int | None = None,
+    keyboard: list | None = None,
 ) -> OutboxMessage | None:
     if not user.telegram_id:
         return None  # nothing to deliver to until Telegram is linked
-    payload = view(text, buttons)
+    payload = view(text, buttons, keyboard)
     if edit_message_id:
         payload["edit_message_id"] = edit_message_id
     message = OutboxMessage(user_id=user.id, chat_id=user.telegram_id, payload=payload)
