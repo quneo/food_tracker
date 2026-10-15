@@ -105,11 +105,45 @@ async def test_backend_errors_are_readable():
 
 
 def test_keyboard_under_the_input_field():
-    keyboard = render.markup({"text": "x", "keyboard": [["🟢 Новая сессия", "📊 Сегодня"]]})
+    keyboard = render.markup(
+        {
+            "text": "x",
+            "keyboard": [["🟢 Новая сессия", "📊 Сегодня"]],
+            "placeholder": "Нажмите «Новая сессия», чтобы писать ассистенту",
+            "styles": {"🟢 Новая сессия": "success"},
+        }
+    )
     assert [[b.text for b in row] for row in keyboard.keyboard] == [
         ["🟢 Новая сессия", "📊 Сегодня"]
     ]
     assert keyboard.resize_keyboard and keyboard.is_persistent
+    assert keyboard.input_field_placeholder.startswith("Нажмите")
+    assert [b.style for b in keyboard.keyboard[0]] == ["success", None]
+
+
+def test_buttons_take_colours_the_api_knows():
+    keyboard = render.markup(
+        {
+            "text": "x",
+            "buttons": [
+                [
+                    {"text": "🗑 Да, удалить", "data": "a:y:1", "style": "danger"},
+                    {"text": "Нет", "data": "a:n:1", "style": "purple"},
+                ]
+            ],
+        }
+    )
+    assert [b.style for b in keyboard.inline_keyboard[0]] == ["danger", None]
+
+
+async def test_a_message_for_the_assistant_gets_eyes():
+    from app.delivery import react
+
+    bot = SimpleNamespace(set_message_reaction=AsyncMock())
+    await react(bot, 7, 15)
+    await react(bot, 7, None)  # nothing to mark
+    [call] = bot.set_message_reaction.await_args_list
+    assert call.args == (7, 15) and call.kwargs["reaction"][0].emoji == "👀"
 
 
 async def test_a_keyboard_message_is_sent_not_edited():

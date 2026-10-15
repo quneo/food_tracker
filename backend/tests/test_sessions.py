@@ -27,18 +27,21 @@ def drain(worker):
 
 
 def test_outside_a_session_nothing_reaches_the_assistant(person, runner, worker, sessions):
-    answer = person.say("что съесть на ужин?").json()
+    answer = person.say("что съесть на ужин?", telegram_message_id=321).json()
     assert answer["job_id"] is None and "Сессия не начата" in answer["view"]["text"]
     go = answer["view"]["buttons"][0][0]["data"]
     assert go.startswith("s:go:")
     drain(worker)
     assert runner.calls == []
 
-    # One tap: a session starts and the message goes to the assistant.
+    # One tap: a session starts and the message goes to the assistant; the question
+    # goes away and the message gets 👀 like any other in a session.
     runner.answers.append(OK)
     pressed = person.press(go)
-    assert pressed["job_id"] and "Отправил" in pressed["view"]["text"]
+    assert pressed["job_id"] and pressed["delete"] and pressed["view"] is None
+    assert pressed["react_to"] == 321
     assert pressed["message"]["keyboard"][0][0] == chat_sessions.END
+    assert pressed["message"]["placeholder"] == "Сообщение ассистенту…"
     drain(worker)
     assert "что съесть на ужин?" in runner.calls[0]["prompt"]
     assert person.press(go)["toast"] == "Сообщение уже обработано или устарело"
@@ -150,8 +153,9 @@ def test_ending_a_session_sums_it_up(person, runner, worker):
     person.start_session()
     person.say("вес 80")  # recorded by the bot, still counts for the session
     ended = person.say(chat_sessions.END).json()["view"]
-    assert "Сессия завершена" in ended["text"] and "⚖️ Вес 80 кг" in ended["text"]
+    assert "Сессия закрыта" in ended["text"] and "⚖️ Вес 80 кг" in ended["text"]
     assert ended["keyboard"][0][0] == chat_sessions.NEW
+    assert ended["styles"] == {chat_sessions.NEW: "success"}
     assert person.say(chat_sessions.END).json()["view"]["text"] == "Сессия уже закрыта."
 
 

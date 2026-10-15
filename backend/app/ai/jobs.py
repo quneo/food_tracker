@@ -46,11 +46,19 @@ ERRORS = {
 }
 DEFAULT_ERROR = "Не получилось связаться с AI. Попробуйте позже — сообщение сохранено."
 BOLD = re.compile(r"\*\*(.+?)\*\*")
+TAG = re.compile(r"<[^>]+>")
 
 
 def reply_html(text: str) -> str:
     """Plain model text -> safe Telegram HTML (only **bold** survives)."""
     return BOLD.sub(r"<b>\1</b>", html.escape(text.strip()))
+
+
+def card_note(card: dict) -> str:
+    """A card as the conversation remembers it: the assistant sees later what was shown,
+    proposals with buttons included."""
+    text = html.unescape(TAG.sub("", card["text"])).strip()
+    return "[карточка] " + (text if len(text) <= 700 else text[:700] + "…")
 
 
 class Worker:
@@ -205,7 +213,13 @@ class Worker:
                     user_id=user.id,
                     role="assistant",
                     text="\n\n".join(
-                        part for part in (result.reply, "\n".join(outcome.notes)) if part
+                        part
+                        for part in (
+                            result.reply,
+                            "\n".join(outcome.notes),
+                            *(card_note(card) for card in outcome.cards),
+                        )
+                        if part
                     ),
                     session_id=session.id if session else None,
                 )

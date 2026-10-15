@@ -136,15 +136,20 @@ class Person:
         response = self.web.post("/api/auth/telegram", json=widget_payload(telegram_id, name))
         assert response.status_code == 200, response.text
 
-    def say(self, text: str = "", photos: list[bytes] | None = None, status_message_id=500):
+    def say(
+        self,
+        text: str = "",
+        photos: list[bytes] | None = None,
+        status_message_id=500,
+        telegram_message_id=None,
+    ):
         files = [
             ("photos", (f"{n}.jpg", data, "image/jpeg")) for n, data in enumerate(photos or [])
         ]
-        return self.bot.post(
-            "/api/bot/messages",
-            data={"text": text, "status_message_id": str(status_message_id)},
-            files=files or None,
-        )
+        data = {"text": text, "status_message_id": str(status_message_id)}
+        if telegram_message_id:
+            data["telegram_message_id"] = str(telegram_message_id)
+        return self.bot.post("/api/bot/messages", data=data, files=files or None)
 
     def start_session(self) -> dict:
         response = self.bot.post("/api/bot/new")

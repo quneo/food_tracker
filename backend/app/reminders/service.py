@@ -164,7 +164,7 @@ def _start_review(db: Session, user) -> bool:
     try:
         _, started = start_review(db, user, 7)
         if started:
-            outbox.push(db, user, **sessions.started_view())
+            outbox.push(db, user, **sessions.started_view(db, user))
     except DomainError as error:
         log.info("weekly review for user %s skipped: %s", user.id, error.message)
         return False

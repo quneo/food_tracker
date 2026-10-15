@@ -27,10 +27,12 @@ def push(
     buttons: list | None = None,
     edit_message_id: int | None = None,
     keyboard: list | None = None,
+    **extra,
 ) -> OutboxMessage | None:
+    """extra: more of the view, such as the keyboard's "placeholder" and "styles"."""
     if not user.telegram_id:
         return None  # nothing to deliver to until Telegram is linked
-    payload = view(text, buttons, keyboard)
+    payload = {**view(text, buttons, keyboard), **extra}
     if edit_message_id:
         payload["edit_message_id"] = edit_message_id
     message = OutboxMessage(user_id=user.id, chat_id=user.telegram_id, payload=payload)

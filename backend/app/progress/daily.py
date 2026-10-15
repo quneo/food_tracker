@@ -125,7 +125,7 @@ def progress_photos(
 
 def replace_view(action: PendingAction, add: bool = False) -> dict:
     """The question with plain answers: replace, (add,) keep."""
-    rows = [[views.button("🔁 Заменить", f"a:y:{action.id}")]]
+    rows = [[views.button("🔁 Заменить", f"a:y:{action.id}", "primary")]]
     if add:
         rows[0].append(views.button("➕ Добавить к ним", f"a:add:{action.id}"))
     rows.append([views.button("Оставить как было", f"a:n:{action.id}")])

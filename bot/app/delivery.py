@@ -11,6 +11,7 @@ from aiogram.exceptions import (
     TelegramNetworkError,
     TelegramRetryAfter,
 )
+from aiogram.types import ReactionTypeEmoji
 
 from app import render
 from app.api import ApiError, Backend
@@ -57,6 +58,18 @@ async def send(bot: Bot, chat_id: int, view: dict, edit_message_id: int | None =
             chat_id, render.plain(body), parse_mode=None, reply_markup=keyboard
         )
     return message.message_id
+
+
+async def react(bot: Bot, chat_id: int, message_id: int | None, emoji: str = "👀"):
+    """Marks a person's message (👀 = the assistant has it); a failed mark is not worth an error."""
+    if not message_id:
+        return
+    try:
+        await bot.set_message_reaction(
+            chat_id, message_id, reaction=[ReactionTypeEmoji(emoji=emoji)]
+        )
+    except (TelegramBadRequest, TelegramForbiddenError, TelegramNetworkError):
+        pass
 
 
 async def deliver_once(bot: Bot, backend: Backend) -> int:

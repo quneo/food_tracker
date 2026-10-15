@@ -1,8 +1,10 @@
 """Server-made views -> Telegram messages.
 
-A view is {"text": html, "buttons": [[{"text", "data" | "url"}]], "keyboard": [[label]]?};
-the backend builds them so every rule stays next to the data. "keyboard" replaces the
-keyboard under the input field (its taps come back as plain text messages)."""
+A view is {"text": html, "buttons": [[{"text", "data" | "url" | "web_app", "style"?}]],
+"keyboard": [[label]]?, "placeholder"?, "styles": {label: style}?}; the backend builds them
+so every rule stays next to the data. "keyboard" replaces the keyboard under the input
+field (its taps come back as plain text messages); "placeholder" is the hint in the empty
+input field. A style colours a button: "success", "danger" or "primary"."""
 
 import re
 
@@ -16,14 +18,24 @@ from aiogram.types import (
 
 LIMIT = 4096
 TAG = re.compile(r"<[^>]+>")
+STYLES = {"success", "danger", "primary"}
+
+
+def _style(value) -> str | None:
+    return value if value in STYLES else None
 
 
 def markup(view: dict) -> InlineKeyboardMarkup | ReplyKeyboardMarkup | None:
     if view.get("keyboard"):
+        styles = view.get("styles") or {}
         return ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text=label) for label in row] for row in view["keyboard"]],
+            keyboard=[
+                [KeyboardButton(text=label, style=_style(styles.get(label))) for label in row]
+                for row in view["keyboard"]
+            ],
             resize_keyboard=True,
             is_persistent=True,
+            input_field_placeholder=(view.get("placeholder") or "")[:64] or None,
         )
     rows = []
     for row in view.get("buttons") or []:
@@ -31,18 +43,23 @@ def markup(view: dict) -> InlineKeyboardMarkup | ReplyKeyboardMarkup | None:
         for button in row:
             if not button:
                 continue
+            style = _style(button.get("style"))
             if button.get("web_app"):
                 # The diary inside Telegram, signed in with the Mini App data.
                 buttons.append(
                     InlineKeyboardButton(
-                        text=button["text"], web_app=WebAppInfo(url=button["web_app"])
+                        text=button["text"], web_app=WebAppInfo(url=button["web_app"]), style=style
                     )
                 )
             elif button.get("url"):
-                buttons.append(InlineKeyboardButton(text=button["text"], url=button["url"]))
+                buttons.append(
+                    InlineKeyboardButton(text=button["text"], url=button["url"], style=style)
+                )
             else:
                 buttons.append(
-                    InlineKeyboardButton(text=button["text"], callback_data=button["data"])
+                    InlineKeyboardButton(
+                        text=button["text"], callback_data=button["data"], style=style
+                    )
                 )
         if buttons:
             rows.append(buttons)

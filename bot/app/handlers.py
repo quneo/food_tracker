@@ -5,11 +5,12 @@ import asyncio
 import logging
 
 from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import BotCommand, CallbackQuery, Message
 
 from app.api import ApiError, backend
-from app.delivery import send
+from app.delivery import react, send
 
 router = Router()
 log = logging.getLogger(__name__)
@@ -144,6 +145,8 @@ async def forward(messages: list[Message], bot: Bot):
         if result.get("view"):
             await send(bot, first.chat.id, result["view"])
         elif result.get("job_id"):
+            # The assistant has it: 👀 on the message, "typing…" until the answer.
+            await react(bot, first.chat.id, first.message_id)
             await bot.send_chat_action(first.chat.id, "typing")
         if len(photos) > MAX_PHOTOS:
             await first.answer(f"Взял первые {MAX_PHOTOS} фото из {len(photos)}.")
@@ -211,9 +214,19 @@ async def press(callback: CallbackQuery, bot: Bot):
         toast[:200] if toast else None, show_alert=bool(toast and len(toast) > 60)
     )
     message = callback.message
-    if result.get("view") and message:
+    if not message:
+        return
+    if result.get("delete"):
+        # A question that has been answered goes away instead of piling up.
+        try:
+            await message.delete()
+        except TelegramBadRequest:
+            pass
+    elif result.get("view"):
         await send(bot, message.chat.id, result["view"], message.message_id)
-    if result.get("message") and message:
+    if result.get("message"):
         await send(bot, message.chat.id, result["message"])
-    if result.get("job_id") and message:
+    if result.get("react_to"):
+        await react(bot, message.chat.id, result["react_to"])
+    if result.get("job_id"):
         await bot.send_chat_action(message.chat.id, "typing")

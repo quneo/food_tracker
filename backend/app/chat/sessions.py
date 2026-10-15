@@ -29,7 +29,9 @@ REVIEW = "🧾 Разбор"
 MORE = "⚙️ Еще"
 KEYS = {NEW, END, TODAY, WEIGHT, MEASURE, PROGRESS, REVIEW, MORE}
 # Raise when the keyboard changes: everyone gets it again with a short note.
-KEYBOARD_VERSION = 1
+KEYBOARD_VERSION = 2
+# The first few sessions explain themselves; later ones just say what happened.
+INTRO_SESSIONS = 3
 
 
 def keyboard(active: bool) -> list[list[str]]:
@@ -38,6 +40,24 @@ def keyboard(active: bool) -> list[list[str]]:
         [WEIGHT, MEASURE, PROGRESS],
         [REVIEW, MORE],
     ]
+
+
+def keyboard_view(text: str, active: bool, **extra) -> dict:
+    """A message that puts the keyboard for this state under the input field: its hint
+    says whether the assistant is listening."""
+    return {
+        **view(text, keyboard=keyboard(active)),
+        "placeholder": "Сообщение ассистенту…"
+        if active
+        else "Нажмите «Новая сессия», чтобы писать ассистенту",
+        "styles": {NEW: "success"},
+        **extra,
+    }
+
+
+def intro(db: Session, user: User) -> bool:
+    count = db.scalar(select(func.count(ChatSession.id)).where(ChatSession.user_id == user.id))
+    return count <= INTRO_SESSIONS
 
 
 def idle_limit() -> timedelta:
@@ -102,7 +122,7 @@ def finish(db: Session, user: User, session: ChatSession, reason: str, notify: b
     db.flush()
     text = summary(db, user, session)
     if notify:
-        outbox.push(db, user, **ended_view(text, reason))
+        outbox.push(db, user, **ended_view(db, user, text, reason))
     return text
 
 
@@ -128,6 +148,13 @@ def summary(db: Session, user: User, session: ChatSession) -> str:
 
     lines = []
     meals = made(Meal)
+    edited = db.scalar(
+        select(func.count(Meal.id)).where(
+            Meal.user_id == user.id,
+            Meal.created_at < session.started_at,
+            Meal.updated_at >= session.started_at,
+        )
+    )
     if meals:
         kcal = round(sum(meal.kcal for meal in meals))
         drafts = sum(meal.status == "draft" for meal in meals)
@@ -137,6 +164,8 @@ def summary(db: Session, user: User, session: ChatSession) -> str:
         if drafts:
             line += f" (черновиков: {drafts})"
         lines.append(line)
+    if edited:
+        lines.append(f"✏️ Исправлено {edited} {plural(edited, ('запись', 'записи', 'записей'))}")
     weights = made(WeightEntry)
     if weights:
         lines.append(f"⚖️ Вес {views.n(weights[-1].weight_kg, 1)} кг")
@@ -156,35 +185,39 @@ def summary(db: Session, user: User, session: ChatSession) -> str:
                 ChatMessage.session_id == session.id, ChatMessage.role == "user"
             )
         )
-        return "Ничего не записали" + (", только поговорили." if asked else ".")
-    return "За сессию:\n" + "\n".join(lines)
+        return "💬 Только поговорили" if asked else "Ничего не записали"
+    return "\n".join(lines)
 
 
-def started_view(previous: str | None = None) -> dict:
+def started_view(db: Session, user: User, previous: str | None = None) -> dict:
     minutes = get_settings().session_idle_minutes
-    head = f"⏹ Прошлая сессия закрыта. {previous}\n\n" if previous else ""
-    return view(
-        head + "🟢 <b>Сессия началась</b>\n"
-        "Пишите и присылайте фото, можно несколькими сообщениями подряд: ассистент видит "
-        "всё, что пришло в этой сессии.\n"
-        f"<i>Закроется сама через {minutes} минут тишины.</i>",
-        keyboard=keyboard(True),
-    )
+    head = f"⏹ Прошлая сессия закрыта\n{previous}\n\n" if previous else ""
+    if intro(db, user):
+        body = (
+            "🟢 <b>Сессия началась</b>\n"
+            "Пишите и присылайте фото, можно несколькими сообщениями подряд: ассистент видит "
+            "всё, что пришло в этой сессии.\n"
+            f"<i>Закроется сама через {minutes} минут тишины.</i>"
+        )
+    else:
+        body = f"🟢 <b>Сессия началась</b>\n<i>Закроется через {minutes} минут тишины</i>"
+    return keyboard_view(head + body, True)
 
 
-def ended_view(text: str, reason: str) -> dict:
+def ended_view(db: Session, user: User, text: str, reason: str) -> dict:
     minutes = get_settings().session_idle_minutes
     title = (
-        f"⚪️ <b>Сессия завершена</b>\n<i>{minutes} минут тишины.</i>"
+        f"⚪️ <b>Сессия закрыта</b>: {minutes} минут тишины"
         if reason == "idle"
-        else "⏹ <b>Сессия завершена</b>"
+        else "⏹ <b>Сессия закрыта</b>"
     )
-    return view(
-        f"{title}\n\n{text}\n\n"
-        "Пока сессии нет, ассистент ничего не получает. Вес, замеры и фото прогресса я "
-        "запишу и без него.",
-        keyboard=keyboard(False),
+    tail = (
+        "\n\n<i>Без сессии ассистент ничего не получает. Вес, замеры и фото прогресса "
+        "я запишу и так.</i>"
+        if intro(db, user)
+        else ""
     )
+    return keyboard_view(f"{title}\n{text}{tail}", False)
 
 
 def close_idle(db: Session) -> int:

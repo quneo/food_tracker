@@ -189,7 +189,7 @@ class Context:
                 if item.grams_source == "estimated"
                 else f"{n(item.grams)} г"
             )
-            lines.append(f"    · {item.name}, {grams}: {macros(item)}")
+            lines.append(f"    · [item {item.id}] {item.name}, {grams}: {macros(item)}")
         if meal.assumptions:
             lines.append("    допущения: " + "; ".join(meal.assumptions))
         if meal.note:
@@ -230,13 +230,20 @@ class Context:
         ]
         if left:
             lines.append("До нормы осталось: " + ", ".join(left))
-        lines += [self.meal_line(meal) for meal in meals] or ["- записей нет"]
-        recent = []
-        for back in (1, 2):
-            recent += self.meals_on(self.today - timedelta(days=back))
-        if recent:
-            lines.append("Вчера и позавчера:")
-            lines += [self.meal_line(meal, with_day=True) for meal in recent]
+        # Today's meals with their items: a correction changes items by id.
+        lines += [self.meal_details(meal) for meal in meals] or ["- записей нет"]
+        text = self.text.lower()
+        for back, word in ((1, "вчера"), (2, "позавчера")):
+            day = self.today - timedelta(days=back)
+            recent = self.meals_on(day)
+            if not recent:
+                continue
+            lines.append(f"{word.capitalize()}, {day:%d.%m}:")
+            named = word in (text if back == 2 else text.replace("позавчера", ""))
+            lines += [
+                self.meal_details(meal) if named else self.meal_line(meal, with_day=True)
+                for meal in recent
+            ]
         return "## Питание сегодня\n" + "\n".join(lines)
 
     def section_drafts(self) -> str:
@@ -248,6 +255,7 @@ class Context:
                     Meal.user_id == self.user.id,
                     Meal.status == "draft",
                     Meal.eaten_on >= self.today - timedelta(days=3),
+                    Meal.eaten_on != self.today,  # today's are shown in full above
                 )
                 .order_by(Meal.eaten_at)
             )
@@ -258,7 +266,7 @@ class Context:
             if meal and meal.user_id == self.user.id:
                 parts.append(
                     "## Запись, которую пользователь нажал «Исправить»\n"
-                    "Сообщение скорее всего исправляет ее (update_meal с этим id).\n"
+                    "Сообщение скорее всего исправляет ее (edit_meal с этим id).\n"
                     + self.meal_details(meal)
                 )
                 drafts = [draft for draft in drafts if draft.id != meal.id]
@@ -467,7 +475,7 @@ class Context:
             local = to_local(message.created_at, self.tz)
             who = "Пользователь" if message.role == "user" else "Ассистент"
             photos = f" [фото: {message.photos}]" if message.photos else ""
-            text = message.text if len(message.text) <= 800 else message.text[:800] + "…"
+            text = message.text if len(message.text) <= 1600 else message.text[:1600] + "…"
             lines.append(f"[{local:%H:%M}] {who}{photos}: {text}")
         body = "\n".join(lines) if lines else "- это начало сессии"
         return f"## Сессия (начата в {started:%H:%M})\n{body}"

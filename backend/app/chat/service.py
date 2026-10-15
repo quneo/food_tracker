@@ -89,9 +89,9 @@ def site_row(text: str = "🌐 Открыть дневник", path: str = "/") 
     return [[button]] if button else []
 
 
-def _keyboard(db: Session, user: User) -> list:
+def _with_keyboard(db: Session, user: User, text: str) -> dict:
     state_of(db, user).keyboard_version = sessions.KEYBOARD_VERSION
-    return sessions.keyboard(sessions.current(db, user) is not None)
+    return sessions.keyboard_view(text, sessions.current(db, user) is not None)
 
 
 def _announce(db: Session, user: User):
@@ -103,11 +103,14 @@ def _announce(db: Session, user: User):
     outbox.push(
         db,
         user,
-        "✨ <b>Бот обновился</b>\n"
-        "Ассистент теперь работает в сессиях: нажмите «🟢 Новая сессия» и пишите как в "
-        "обычном чате. Вес, замеры и фото прогресса записываются кнопками внизу и без "
-        "сессии. /help — подробнее.",
-        keyboard=sessions.keyboard(sessions.current(db, user) is not None),
+        **sessions.keyboard_view(
+            "✨ <b>Бот обновился</b>\n"
+            "• Правки еды точечные: «добавь к ужину сливы» меняет только сливы, остальное "
+            "остается как было\n"
+            "• Карточки компактнее, детали расчета свернуты под «Оценка»\n"
+            "• Пока ассистент думает, на вашем сообщении стоит 👀",
+            sessions.current(db, user) is not None,
+        ),
     )
 
 
@@ -144,15 +147,15 @@ def start(db: Session, info: dict, payload: str | None) -> dict:
         if created
         else "С возвращением! 👋\n\n"
     )
-    keyboard = _keyboard(db, user)
+    result = _with_keyboard(db, user, greeting + HELP)
     db.commit()
-    return view(greeting + HELP, keyboard=keyboard)
+    return result
 
 
 def help_view(db: Session, user: User) -> dict:
-    keyboard = _keyboard(db, user)
+    result = _with_keyboard(db, user, HELP)
     db.commit()
-    return view(HELP, keyboard=keyboard)
+    return result
 
 
 def link(db: Session, info: dict, code: str | None) -> dict:
@@ -166,7 +169,7 @@ def link(db: Session, info: dict, code: str | None) -> dict:
         text = users.link_telegram(db, code, info)
     except DomainError as error:
         return view(escape(error.message))
-    return view(f"{text}\n\n{HELP}", keyboard=sessions.keyboard(False))
+    return sessions.keyboard_view(f"{text}\n\n{HELP}", False)
 
 
 def today(db: Session, user: User) -> dict:
@@ -184,8 +187,9 @@ def new_session(db: Session, user: User) -> dict:
     state = state_of(db, user)
     state.focus_meal_id = None
     state.keyboard_version = sessions.KEYBOARD_VERSION
+    result = sessions.started_view(db, user, previous)
     db.commit()
-    return sessions.started_view(previous)
+    return result
 
 
 def end_session(db: Session, user: User) -> dict:
@@ -193,13 +197,14 @@ def end_session(db: Session, user: User) -> dict:
     session = sessions.current(db, user)
     if not session:
         db.commit()
-        return view("Сессия уже закрыта.", keyboard=sessions.keyboard(False))
+        return sessions.keyboard_view("Сессия уже закрыта.", False)
     text = sessions.finish(db, user, session, "user")
     state = state_of(db, user)
     state.focus_meal_id = None
     state.keyboard_version = sessions.KEYBOARD_VERSION
+    result = sessions.ended_view(db, user, text, "user")
     db.commit()
-    return sessions.ended_view(text, "user")
+    return result
 
 
 def progress_mode(db: Session, user: User) -> dict:
@@ -390,12 +395,11 @@ def queue_turn(db: Session, user: User, message: ChatMessage, status_message_id=
 
 
 def _outside_session(message: ChatMessage, photos: bool) -> dict:
-    rows = [[views.button("🟢 Начать сессию с этим сообщением", f"s:go:{message.id}")]]
+    rows = [[views.button("🟢 Отправить ассистенту", f"s:go:{message.id}", "success")]]
     if photos:
         rows.append([views.button("📸 Это фото прогресса", f"s:pr:{message.id}")])
     return view(
-        "💤 <b>Сессия не начата</b>\n"
-        "Это сообщение пока никуда не ушло. Начать сессию, чтобы ассистент его увидел?",
+        "💤 <b>Сессия не начата</b>, ассистент этого не видел. Отправить ему? Начнется сессия.",
         rows,
     )
 
@@ -490,12 +494,27 @@ def _meal(db: Session, user: User, meal_id: str) -> Meal:
     return meal
 
 
-def _meal_view(db: Session, user: User, meal: Meal, deleting: bool = False) -> dict:
+def _meal_view(
+    db: Session, user: User, meal: Meal, deleting: bool = False, changes: list | None = None
+) -> dict:
     today_ = local_today(zone(user.profile.timezone))
     total = nutrition.totals(nutrition.list_meals(db, user.id, today_, today_))
     return views.meal_view(
-        meal, user.profile.timezone, total, user.profile.kcal_target, deleting=deleting
+        meal,
+        user.profile.timezone,
+        total,
+        user.profile.kcal_target,
+        deleting=deleting,
+        changes=changes,
     )
+
+
+def _note_answer(db: Session, user: User, text: str):
+    """A button answer goes into the session's conversation: the assistant then knows
+    that its proposal was taken or turned down."""
+    session = sessions.current(db, user)
+    if session:
+        db.add(ChatMessage(user_id=user.id, role="assistant", text=text, session_id=session.id))
 
 
 def press(db: Session, user: User, data: str, message_id: int | None = None) -> dict:
@@ -587,7 +606,7 @@ def _press(db: Session, user: User, parts: list[str], message_id: int | None) ->
         result["job_id"] = job.id
         result["view"] = view(f"⏳ Разбираю рацион за {REVIEW_PERIODS[days]}…")
         if started:
-            result["message"] = sessions.started_view()
+            result["message"] = sessions.started_view(db, user)
         return result
     if head == "m":
         action, meal = parts[1], _meal(db, user, parts[2])
@@ -610,7 +629,7 @@ def _press(db: Session, user: User, parts: list[str], message_id: int | None) ->
                 "<i>«риса было 200 г»</i>, <i>«без соуса»</i> или <i>«это был ужин»</i>."
             )
             if started:
-                start_view = sessions.started_view()
+                start_view = sessions.started_view(db, user)
                 result["message"] = {**start_view, "text": f"{start_view['text']}\n\n{ask}"}
             else:
                 result["message"] = view(ask)
@@ -642,12 +661,21 @@ def _press(db: Session, user: User, parts: list[str], message_id: int | None) ->
             raise DomainError("Уже выполнено или устарело")
         if head == "a" and parts[1] == "n":
             action.status = "cancelled"
+            _note_answer(db, user, f"(Пользователь нажал «Нет») {action.summary} → не изменено")
             db.commit()
             result["view"] = view(f"{escape(action.summary)}\n\n✖️ Хорошо, ничего не меняю.")
             return result
         done = execute_pending(db, user, action, parts[1] if head == "a" else "y")
         action.status = "done"
+        _note_answer(db, user, f"(Пользователь нажал кнопку) {action.summary} → {done}")
         db.commit()
+        if action.kind in ("edit_meal", "restore_meal"):
+            # The meal card again, as it is now.
+            meal = _meal(db, user, str(action.payload["meal_id"]))
+            lines = action.payload["plan"]["lines"] if action.kind == "edit_meal" else None
+            result["view"] = _meal_view(db, user, meal, changes=lines)
+            result["toast"] = "Исправлено" if action.kind == "edit_meal" else "Вернул как было"
+            return result
         if head == "u":
             text = action.payload.get("text", "")
             result["view"] = view(f"{text}\n\n{done}", action.payload.get("buttons") or [])
@@ -710,10 +738,12 @@ def _press_session(db: Session, user: User, parts: list[str], result: dict) -> d
     message.session_id = session.id
     job = queue_turn(db, user, message)
     job.not_before = utcnow()
+    result["message"] = sessions.started_view(db, user) if started else None
     db.commit()
+    # The question is answered: it goes away, the message gets 👀 like any in a session.
     result["job_id"] = job.id
-    result["view"] = view("↪️ Отправил ассистенту.")
-    result["message"] = sessions.started_view() if started else None
+    result["delete"] = True
+    result["react_to"] = message.telegram_message_id
     return result
 
 

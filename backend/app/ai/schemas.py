@@ -71,10 +71,34 @@ class CreateMeal(Strict):
     use_photos: bool = Field(description="Attach the photos of the current message to this meal.")
 
 
-class UpdateMeal(Strict):
-    kind: Literal["update_meal"]
+class ItemChange(Strict):
+    item_id: int = Field(description="Id of the item ([item N]) as shown under its meal.")
+    grams: float | None = Field(
+        description="New edible weight; null = keep. With null numbers below, the app "
+        "rescales kcal and macros to the new weight."
+    )
+    grams_source: Literal["estimated", "stated", "label"] | None = Field(
+        description="With a new weight: stated if the user gave it, estimated if you did."
+    )
+    name: str | None = Field(description="New name if the food itself was wrong; null = keep.")
+    kcal: float | None = Field(description="New kcal for the item; null = keep or rescale.")
+    protein: float | None
+    fat: float | None
+    carbs: float | None
+
+
+class EditMeal(Strict):
+    kind: Literal["edit_meal"]
     meal_id: int = Field(description="Id of a meal shown in the context.")
-    meal: MealEstimate = Field(description="The complete corrected meal, all items.")
+    add: list[FoodItem] = Field(description="Items to add to the meal; [] = none.")
+    change: list[ItemChange] = Field(description="Items to change; [] = none.")
+    remove: list[int] = Field(description="Ids of items to remove; [] = none.")
+    title: str | None = Field(description="New title when the dish changed; null = keep.")
+    meal_type: MealType | None = Field(description="null = keep.")
+    eaten_at: LocalTime
+    comment: str | None = Field(
+        description="New remark about the meal after the change, or null to keep the old one."
+    )
 
 
 class DeleteMeal(Strict):
@@ -200,7 +224,7 @@ class DeleteProduct(Strict):
 
 Action = Annotated[
     CreateMeal
-    | UpdateMeal
+    | EditMeal
     | DeleteMeal
     | LogWeight
     | UpdateWeight
@@ -222,6 +246,7 @@ Action = Annotated[
 class TurnResult(Strict):
     reply: str = Field(
         description="Message to the user in Russian, plain text, 1-4 short sentences unless "
-        "they asked for detail. Do not repeat meal items or numbers: the app shows a card."
+        "they asked for detail. Do not repeat meal items or numbers: the app shows a card. "
+        "Never say something was recorded or changed unless that action is in `actions`."
     )
     actions: list[Action]

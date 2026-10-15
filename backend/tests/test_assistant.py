@@ -52,6 +52,33 @@ LUNCH = estimate(
 )
 
 
+def edit(meal_id, add=(), change=(), remove=(), **fields):
+    return {
+        "kind": "edit_meal",
+        "meal_id": meal_id,
+        "add": list(add),
+        "change": list(change),
+        "remove": list(remove),
+        "title": fields.get("title"),
+        "meal_type": fields.get("meal_type"),
+        "eaten_at": fields.get("eaten_at"),
+        "comment": fields.get("comment"),
+    }
+
+
+def change(item_id, grams=None, **values):
+    return {
+        "item_id": item_id,
+        "grams": grams,
+        "grams_source": "stated" if grams else None,
+        "name": values.get("name"),
+        "kcal": values.get("kcal"),
+        "protein": values.get("protein"),
+        "fat": values.get("fat"),
+        "carbs": values.get("carbs"),
+    }
+
+
 def run_jobs(worker):
     asyncio.run(worker.drain())
 
@@ -125,20 +152,23 @@ def test_fix_button_edits_the_meal_directly(person, runner, worker):
     # "Fix" on a saved meal: the next message corrects it without another question.
     message = person.press(f"m:e:{meal['id']}")["message"]
     assert "Что исправить" in message["text"]
-    fixed = estimate("Курица с рисом", [item("Куриная грудка", 150, 250), item("Рис", 250, 320)])
+    chicken, rice, oil = (entry["id"] for entry in meal["items"])
     runner.answers.append(
-        {
-            "reply": "Исправил.",
-            "actions": [{"kind": "update_meal", "meal_id": meal["id"], "meal": fixed}],
-        }
+        {"reply": "", "actions": [edit(meal["id"], change=[change(rice, 250)], remove=[oil])]}
     )
     person.say("риса было 250 г, без масла")
     run_jobs(worker)
-    assert f"[meal {meal['id']}]" in runner.calls[1]["prompt"]
-    assert "нажал «Исправить»" in runner.calls[1]["prompt"]
+    prompt = runner.calls[1]["prompt"]
+    assert f"[meal {meal['id']}]" in prompt and "нажал «Исправить»" in prompt
+    assert f"[item {rice}] Рис отварной" in prompt
     updated = person.web.get(f"/api/meals/{meal['id']}").json()
-    assert updated["kcal"] == 570 and len(updated["items"]) == 2
-    assert updated["status"] == "confirmed"
+    # The rice follows its new weight (230 kcal per 180 g), the chicken is untouched.
+    assert [entry["name"] for entry in updated["items"]] == [
+        "Куриная грудка жареная",
+        "Рис отварной",
+    ]
+    assert updated["items"][1]["grams"] == 250 and round(updated["items"][1]["kcal"]) == 319
+    assert updated["items"][0]["kcal"] == 250 and updated["status"] == "confirmed"
 
 
 def test_changes_to_saved_records_wait_for_yes(person, runner, worker, sessions):
@@ -174,15 +204,10 @@ def test_other_peoples_ids_are_rejected(person, make_person, runner, worker, ses
     meal = other.web.post(
         "/api/meals", json={"title": "Чужой обед", "items": [{"name": "Суп", "kcal": 200}]}
     ).json()
-    runner.answers.append(
-        {
-            "reply": "Готово",
-            "actions": [{"kind": "update_meal", "meal_id": meal["id"], "meal": LUNCH}],
-        }
-    )
+    runner.answers.append({"reply": "", "actions": [edit(meal["id"], remove=[1])]})
     person.say("исправь обед")
     run_jobs(worker)
-    assert "Не получилось" in outbox(sessions)[0].payload["text"]
+    assert "Не изменил запись" in outbox(sessions)[0].payload["text"]
     assert other.web.get(f"/api/meals/{meal['id']}").json()["title"] == "Чужой обед"
 
 
@@ -327,3 +352,81 @@ def test_conversation_and_memory_reach_the_prompt(person, runner, worker):
     run_jobs(worker)
     assert "тренировался" not in runner.calls[2]["prompt"]
     assert "Аллергия на арахис" in runner.calls[2]["prompt"]
+
+
+def test_adding_to_a_saved_meal_keeps_the_rest(person, runner, worker, sessions):
+    dinner = person.web.post(
+        "/api/meals",
+        json={
+            "title": "Рис с курицей",
+            "items": [
+                {"name": "Рис басмати", "grams": 116, "kcal": 151},
+                {"name": "Куриная грудка", "grams": 100, "kcal": 165},
+            ],
+        },
+    ).json()
+    plums = item("Сливы без косточек", 117, 53, 1, 0, 12, source="stated")
+    runner.answers.append({"reply": "", "actions": [edit(dinner["id"], add=[plums])]})
+    person.say("докинь в ужин 4 сливы, 126 г с косточкой")
+    run_jobs(worker)
+
+    # Plain additions apply at once; nothing else in the meal changes.
+    updated = person.web.get(f"/api/meals/{dinner['id']}").json()
+    assert [entry["kcal"] for entry in updated["items"]] == [151, 165, 53]
+    assert updated["kcal"] == 369
+    [message] = outbox(sessions)
+    text = message.payload["text"]
+    assert "Что изменилось" in text and "+ Сливы без косточек, 117 г — 53 ккал" in text
+    back = message.payload["buttons"][-1][0]
+    assert back["text"] == "↩️ Вернуть как было"
+
+    view = person.press(back["data"])["view"]
+    assert "Рис с курицей" in view["text"] and "Сливы" not in view["text"]
+    assert person.web.get(f"/api/meals/{dinner['id']}").json()["kcal"] == 316
+
+
+def test_replacing_items_waits_for_yes_and_a_no_is_remembered(person, runner, worker, sessions):
+    meal = person.web.post(
+        "/api/meals",
+        json={
+            "title": "Салат",
+            "items": [
+                {"name": "Овощи", "grams": 250, "kcal": 70},
+                {"name": "Масло", "grams": 5, "kcal": 45},
+            ],
+        },
+    ).json()
+    veg, oil = (entry["id"] for entry in meal["items"])
+    chickpeas = item("Нут запеченный", 40, 66)
+    runner.answers.append(
+        {"reply": "", "actions": [edit(meal["id"], add=[chickpeas], remove=[oil])]}
+    )
+    person.say("тут нет масла, есть нут")
+    run_jobs(worker)
+    [question] = outbox(sessions)
+    text = question.payload["text"]
+    assert "− Масло, 5 г — 45 ккал" in text and "+ Нут запеченный, ~40 г — 66 ккал" in text
+    assert "Итого: 115 → 136 ккал" in text
+    no = question.payload["buttons"][0][1]["data"]
+    assert person.web.get(f"/api/meals/{meal['id']}").json()["kcal"] == 115
+
+    person.press(no)
+    runner.answers.append({"reply": "Понял.", "actions": []})
+    person.say("почему так?")
+    run_jobs(worker)
+    # The assistant learns that its proposal was turned down, and sees what it showed.
+    prompt = runner.calls[1]["prompt"]
+    assert "(Пользователь нажал «Нет»)" in prompt and "[карточка] ❓ Изменить «Салат»" in prompt
+
+
+def test_a_meal_in_the_future_is_refused_plainly(person, runner, worker, sessions):
+    tomorrow = {**LUNCH, "eaten_at": "2099-01-01T08:00"}
+    runner.answers.append(
+        {"reply": "", "actions": [{"kind": "create_meal", "meal": tomorrow, "use_photos": False}]}
+    )
+    person.say("на завтра кусочек торта")
+    run_jobs(worker)
+    assert (
+        "⚠️ Не записал прием пищи: время приема пищи в будущем"
+        in (outbox(sessions)[0].payload["text"])
+    )

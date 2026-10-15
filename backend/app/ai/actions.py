@@ -2,8 +2,9 @@
 
 The model never touches the database. Every action is validated here: ids must belong to
 the person and be of the right kind, numbers must be plausible. New records are written
-at once (with an undo button); edits and deletions of saved records the person did not
-explicitly point at wait for a "yes"."""
+at once (with an undo button). Additions to a recorded meal apply at once too, with a
+button that puts the meal back; other edits and deletions of saved records the person did
+not explicitly point at wait for a "yes"."""
 
 import logging
 from dataclasses import dataclass, field
@@ -12,7 +13,7 @@ from datetime import date, timedelta
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.ai import memory
+from app.ai import meal_edits, memory
 from app.ai.models import MemoryFact
 from app.ai.schemas import (
     CreateMeal,
@@ -20,6 +21,7 @@ from app.ai.schemas import (
     DeleteProduct,
     DeleteRecord,
     DeleteReminder,
+    EditMeal,
     Forget,
     LogMeasurements,
     LogWeight,
@@ -29,7 +31,6 @@ from app.ai.schemas import (
     SaveProgressPhoto,
     SetReminder,
     TurnResult,
-    UpdateMeal,
     UpdateMemory,
     UpdateProfile,
     UpdateWeight,
@@ -43,7 +44,7 @@ from app.media.models import Media
 from app.nutrition import products as product_store
 from app.nutrition import service as nutrition
 from app.nutrition.models import Meal, Product
-from app.nutrition.schemas import MealItemIn, ProductIn
+from app.nutrition.schemas import ProductIn
 from app.progress import daily
 from app.progress import service as progress
 from app.progress.models import MEASUREMENTS, Measurement, ProgressPhoto, WeightEntry
@@ -54,6 +55,18 @@ from app.users.models import User
 log = logging.getLogger(__name__)
 PENDING_TTL = timedelta(hours=24)
 ENTITY_NAMES = {"weight": "вес", "measurement": "замер", "progress_photo": "фото прогресса"}
+# What did not happen when an action was refused, in the person's words.
+REFUSED = {
+    "create_meal": "Не записал прием пищи",
+    "edit_meal": "Не изменил запись",
+    "delete_meal": "Не удалил запись",
+    "log_weight": "Не записал вес",
+    "log_measurements": "Не записал замеры",
+    "save_progress_photo": "Не сохранил фото",
+    "save_product": "Не сохранил продукт",
+    "update_profile": "Не обновил профиль",
+    "set_reminder": "Не поставил напоминание",
+}
 
 
 @dataclass
@@ -83,7 +96,7 @@ class Executor:
     def run(self, result: TurnResult) -> Outcome:
         handlers = {
             "create_meal": self.create_meal,
-            "update_meal": self.update_meal,
+            "edit_meal": self.edit_meal,
             "delete_meal": self.delete_meal,
             "log_weight": self.log_weight,
             "update_weight": self.update_weight,
@@ -106,7 +119,8 @@ class Executor:
             except (DomainError, ValidationError, ValueError) as error:
                 message = error.message if isinstance(error, DomainError) else "неверные данные"
                 log.info("action %s rejected: %s", action.kind, error)
-                self.out.notes.append(f"⚠️ Не получилось выполнить действие: {message}")
+                what = REFUSED.get(action.kind, "Не получилось")
+                self.out.notes.append(f"⚠️ {what}: {message[:1].lower()}{message[1:]}")
         return self.out
 
     # Helpers
@@ -115,10 +129,14 @@ class Executor:
         today = local_today(zone(self.tz_name))
         return nutrition.totals(nutrition.list_meals(self.db, self.user.id, today, today))
 
-    def card(self, meal: Meal):
-        self.out.cards.append(
-            views.meal_view(meal, self.tz_name, self.day_total(), self.user.profile.kcal_target)
+    def card(self, meal: Meal, changes: list[str] | None = None, restore: int | None = None):
+        card = views.meal_view(
+            meal, self.tz_name, self.day_total(), self.user.profile.kcal_target, changes=changes
         )
+        if restore:
+            back = views.button("↩️ Вернуть как было", f"u:{restore}")
+            card["buttons"] = card["buttons"] + [[back]]
+        self.out.cards.append(card)
 
     def ask(self, kind: str, payload: dict, summary: str):
         action = PendingAction(
@@ -130,7 +148,7 @@ class Executor:
         )
         self.db.add(action)
         self.db.flush()
-        self.out.cards.append(views.confirm_view(action.id, summary))
+        self.out.cards.append(views.confirm_view(action.id, summary, kind.startswith("delete")))
 
     def owned(self, model, record_id: int, what: str):
         record = self.db.get(model, record_id)
@@ -145,29 +163,8 @@ class Executor:
         return product if product and product.user_id == self.user.id else None
 
     def apply_estimate(self, meal: Meal, estimate: MealEstimate):
-        items = []
-        for item in estimate.items:
-            grams = item.grams if item.grams and item.grams > 0 else None
-            values = {"kcal": item.kcal, "protein": item.protein, "fat": item.fat}
-            values["carbs"] = item.carbs
-            # A saved product: its label decides the numbers, the model only the amount.
-            product = self.product(item.product_id)
-            if product:
-                grams = grams or product.portion_grams or product.package_grams
-                if grams:
-                    values = product_store.scaled(product, grams)
-                product_store.used(product)
-            items.append(
-                MealItemIn(
-                    name=item.name.strip()[:200] or "Без названия",
-                    product_id=product.id if product else None,
-                    grams=grams,
-                    grams_source=item.grams_source,
-                    confidence=item.confidence,
-                    note=(item.note or "")[:300] or None,
-                    **values,
-                )
-            )
+        # A saved product: its label decides the numbers, the model only the amount.
+        items = [meal_edits.from_estimate(item, self.product) for item in estimate.items]
         if not items:
             raise DomainError("в оценке нет ни одного продукта")
         meal.title = estimate.title.strip()[:200] or "Прием пищи"
@@ -189,14 +186,6 @@ class Executor:
         meal.assumptions = [text.strip()[:200] for text in estimate.assumptions if text.strip()][:8]
         meal.ai_comment = (estimate.comment or "").strip()[:1500] or None
         meal.ai_model = self.model
-
-    def describe_change(self, meal: Meal, estimate: MealEstimate) -> str:
-        kcal = sum(item.kcal for item in estimate.items)
-        names = ", ".join(item.name for item in estimate.items[:6])
-        return (
-            f"Исправить «{meal.title}» ({meal.eaten_on:%d.%m}): {views.n(meal.kcal)} → "
-            f"{views.n(kcal)} ккал? Будет: {names}"
-        )
 
     # Meals
 
@@ -220,19 +209,39 @@ class Executor:
         self.db.refresh(meal)
         self.card(meal)
 
-    def update_meal(self, action: UpdateMeal):
+    def edit_meal(self, action: EditMeal):
+        """Only what was named changes. A draft, the meal the person pressed "Fix" on and
+        plain additions change at once; anything else waits for a yes."""
         meal = self.owned(Meal, action.meal_id, "прием пищи")
-        if meal.status == "draft" or meal.id == self.focus_meal_id:
-            self.apply_estimate(meal, action.meal)
-            self.db.flush()
-            self.db.refresh(meal)
-            self.card(meal)
-        else:
-            self.ask(
-                "update_meal",
-                {"meal_id": meal.id, "meal": action.meal.model_dump()},
-                self.describe_change(meal, action.meal),
+        plan = meal_edits.plan(meal, action, self.product, self.tz_name)
+        if not plan.lines and not plan.title and not plan.comment:
+            raise DomainError("в записи нечего менять")
+        direct = meal.status == "draft" or meal.id == self.focus_meal_id
+        if not direct and not plan.only_added:
+            payload = {
+                "meal_id": meal.id,
+                "before": meal_edits.fingerprint(meal),
+                "plan": plan.dump(),
+            }
+            self.ask("edit_meal", payload, meal_edits.summary(meal, plan))
+            return
+        restore = None
+        if meal.status != "draft":
+            # A recorded meal: one tap puts it back as it was.
+            back = PendingAction(
+                user_id=self.user.id,
+                kind="restore_meal",
+                payload=meal_edits.snapshot(meal),
+                summary=f"Вернуть «{meal.title}» как было",
+                expires_at=utcnow() + PENDING_TTL,
             )
+            self.db.add(back)
+            self.db.flush()
+            restore = back.id
+        meal_edits.apply(meal, plan, self.user)
+        self.db.flush()
+        self.db.refresh(meal)
+        self.card(meal, plan.lines, restore)
 
     def delete_meal(self, action: DeleteMeal):
         meal = self.owned(Meal, action.meal_id, "прием пищи")
@@ -486,12 +495,20 @@ def execute_pending(db: Session, user: User, action: PendingAction, choice: str 
     payload = action.payload
     if action.kind.startswith("replace_"):
         return daily.apply(db, user, action, choice)
-    if action.kind == "update_meal":
+    if action.kind in ("edit_meal", "restore_meal", "update_meal"):
         meal = db.get(Meal, payload["meal_id"])
         if not meal or meal.user_id != user.id:
             raise DomainError("Запись уже удалена")
-        executor = Executor(db, user, [], meal.ai_model, meal.id)
-        executor.apply_estimate(meal, MealEstimate.model_validate(payload["meal"]))
+        if action.kind == "restore_meal":
+            meal_edits.restore(meal, payload)
+            return f"↩️ Вернул как было: «{meal.title}», {views.n(meal.kcal)} ккал"
+        if action.kind == "edit_meal":
+            if meal_edits.fingerprint(meal) != payload["before"]:
+                raise DomainError("Запись уже изменилась. Напишите правку еще раз")
+            meal_edits.apply(meal, meal_edits.Plan.load(payload["plan"]), user)
+        else:  # proposed before item-by-item edits
+            executor = Executor(db, user, [], meal.ai_model, meal.id)
+            executor.apply_estimate(meal, MealEstimate.model_validate(payload["meal"]))
         return f"✅ Исправлено: «{meal.title}», {views.n(meal.kcal)} ккал"
     if action.kind == "delete_meal":
         meal = db.get(Meal, payload["meal_id"])

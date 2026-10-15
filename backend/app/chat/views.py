@@ -22,6 +22,7 @@ from app.core.timeutil import to_local, zone
 from app.nutrition.models import Meal
 
 MEAL_TYPES = {"breakfast": "Завтрак", "lunch": "Обед", "dinner": "Ужин", "snack": "Перекус"}
+MEAL_ICONS = {"breakfast": "🍳", "lunch": "🍲", "dinner": "🍽", "snack": "🍏"}
 TYPE_CODES = {"b": "breakfast", "l": "lunch", "d": "dinner", "s": "snack"}
 CONFIDENCE = {"low": "низкая", "medium": "средняя", "high": "высокая"}
 MONTHS = [
@@ -47,8 +48,12 @@ def day_name(day: date, today: date) -> str:
     return f"{day.day} {MONTHS[day.month - 1]}"
 
 
-def button(text: str, data: str) -> dict:
-    return {"text": text, "data": data}
+def button(text: str, data: str, style: str | None = None) -> dict:
+    """style: "success" (green), "danger" (red) or "primary" (blue); None = plain."""
+    result = {"text": text, "data": data}
+    if style:
+        result["style"] = style
+    return result
 
 
 def site_button(text: str, path: str) -> dict | None:
@@ -67,25 +72,41 @@ def grams(item) -> str:
     return f"~{n(item.grams)} г" if item.grams_source == "estimated" else f"{n(item.grams)} г"
 
 
-def meal_text(meal: Meal, tz_name: str, day_total: dict | None = None, target=None) -> str:
+def day_line(eaten: float, target: int | None, label: str = "За день") -> list[str]:
+    """ "За день: 1748 из 2300 ккал" and a bar under it."""
+    if not target:
+        return [f"{label}: {n(eaten)} ккал"]
+    left = target - eaten
+    tail = f"осталось {n(left)}" if left >= 0 else f"больше нормы на {n(-left)}"
+    return [
+        f"{label}: <b>{n(eaten)}</b> из {target} ккал",
+        f"{progress_bar(eaten / target)} {round(eaten / target * 100)}% · {tail}",
+    ]
+
+
+def meal_text(
+    meal: Meal,
+    tz_name: str,
+    day_total: dict | None = None,
+    target=None,
+    changes: list[str] | None = None,
+) -> str:
+    """The meal card: the numbers first, the items, what changed, the remark; how it was
+    estimated is folded away."""
     tz = zone(tz_name)
     local = to_local(meal.eaten_at, tz)
     approx = "≈ " if meal.estimated_by == "ai" else ""
     kind = MEAL_TYPES.get(meal.meal_type or "", "Прием пищи")
-    status = "черновик" if meal.status == "draft" else "сохранено ✅"
+    status = "📝 черновик" if meal.status == "draft" else "сохранено ✅"
     when = f"{local:%H:%M}"
     if local.date() != to_local(meal.created_at, tz).date():
         when = f"{local:%d.%m} {when}"
     lines = [
-        f"🍽 <b>{escape(meal.title)}</b>",
+        f"{MEAL_ICONS.get(meal.meal_type or '', '🍽')} <b>{escape(meal.title)}</b>",
         f"{kind} · {when} · {status}",
-        f"<b>{approx}{n(meal.kcal)} ккал</b>"
-        + (
-            f" ({n(meal.kcal_low)}–{n(meal.kcal_high)})"
-            if meal.kcal_low is not None and meal.kcal_high is not None
-            else ""
-        )
-        + f" · Б {n(meal.protein)} · Ж {n(meal.fat)} · У {n(meal.carbs)}",
+        "",
+        f"<b>{approx}{n(meal.kcal)} ккал</b> · Б {n(meal.protein)} · Ж {n(meal.fat)} · "
+        f"У {n(meal.carbs)}",
         "",
     ]
     for item in meal.items:
@@ -93,30 +114,45 @@ def meal_text(meal: Meal, tz_name: str, day_total: dict | None = None, target=No
         lines.append(
             f"• {escape(item.name)}{', ' + weight if weight else ''} — {n(item.kcal)} ккал"
         )
+    if changes:
+        lines += ["", "✏️ <b>Что изменилось</b>", *(escape(line) for line in changes)]
     if meal.ai_comment:
-        lines += ["", f"💬 {escape(meal.ai_comment)}"]
-    if meal.assumptions:
-        lines += ["", "<i>Допущения: " + escape("; ".join(meal.assumptions)) + "</i>"]
-    if meal.estimated_by == "ai" and meal.confidence:
-        lines.append(f"<i>Уверенность оценки: {CONFIDENCE[meal.confidence]}</i>")
+        lines += ["", f"💬 <i>{escape(meal.ai_comment)}</i>"]
     if meal.note:
-        lines.append(f"💬 {escape(meal.note)}")
+        lines += ["", f"📝 {escape(meal.note)}"]
+    details = []
+    if meal.assumptions:
+        details.append("Как считал: " + escape("; ".join(meal.assumptions)))
+    if meal.estimated_by == "ai":
+        honest = []
+        if meal.kcal_low is not None and meal.kcal_high is not None:
+            honest.append(f"на деле от {n(meal.kcal_low)} до {n(meal.kcal_high)} ккал")
+        if meal.confidence:
+            honest.append(f"уверенность {CONFIDENCE[meal.confidence]}")
+        if honest:
+            details.append("Оценка: " + ", ".join(honest))
+    if details:
+        lines += ["", "<blockquote expandable>" + "\n".join(details) + "</blockquote>"]
     if day_total is not None:
-        total = day_total["kcal"] + (meal.kcal if meal.status == "draft" else 0)
-        prefix = "С этим за день" if meal.status == "draft" else "За день"
-        goal = f" из {target}" if target else ""
-        lines += ["", f"{prefix}: {n(total)}{goal} ккал"]
+        draft = meal.status == "draft"
+        total = day_total["kcal"] + (meal.kcal if draft else 0)
+        lines += ["", *day_line(total, target, "С этим за день" if draft else "За день")]
     return "\n".join(lines)
 
 
 def meal_buttons(meal: Meal, deleting: bool = False) -> list:
     if deleting:
-        return [[button("🗑 Да, удалить", f"m:dd:{meal.id}"), button("Отмена", f"m:v:{meal.id}")]]
+        return [
+            [
+                button("🗑 Да, удалить", f"m:dd:{meal.id}", "danger"),
+                button("Отмена", f"m:v:{meal.id}"),
+            ]
+        ]
     # One short row: the rest (meal type, time, grams) is fixed in words via "Fix".
     if meal.status == "draft":
         return [
             [
-                button("✅ Сохранить", f"m:ok:{meal.id}"),
+                button("✅ Сохранить", f"m:ok:{meal.id}", "success"),
                 button("✏️ Исправить", f"m:e:{meal.id}"),
                 button("🗑", f"m:x:{meal.id}"),
             ]
@@ -124,34 +160,37 @@ def meal_buttons(meal: Meal, deleting: bool = False) -> list:
     return [[button("✏️ Исправить", f"m:e:{meal.id}"), button("🗑 Удалить", f"m:d:{meal.id}")]]
 
 
-def meal_view(meal: Meal, tz_name: str, day_total=None, target=None, deleting=False) -> dict:
-    return view(meal_text(meal, tz_name, day_total, target), meal_buttons(meal, deleting))
+def meal_view(
+    meal: Meal, tz_name: str, day_total=None, target=None, deleting=False, changes=None
+) -> dict:
+    return view(meal_text(meal, tz_name, day_total, target, changes), meal_buttons(meal, deleting))
 
 
-def confirm_view(action_id: int, summary: str) -> dict:
+def confirm_view(action_id: int, summary: str, danger: bool = False) -> dict:
+    yes = "🗑 Да, удалить" if danger else "✅ Да"
     return view(
         f"❓ {escape(summary)}",
-        [[button("✅ Да", f"a:y:{action_id}"), button("✖️ Нет", f"a:n:{action_id}")]],
+        [
+            [
+                button(yes, f"a:y:{action_id}", "danger" if danger else "success"),
+                button("✖️ Нет", f"a:n:{action_id}"),
+            ]
+        ],
     )
 
 
 def progress_bar(share: float, width: int = 10) -> str:
     filled = max(0, min(width, round(share * width)))
-    return "▓" * filled + "░" * (width - filled)
+    return "▰" * filled + "▱" * (width - filled)
 
 
 def today_view(summary: dict, today: date, weight=None, change=None) -> dict:
     totals, targets = summary["totals"], summary["targets"]
     lines = [
-        f"📊 <b>{day_name(today, today).capitalize()}, {today.day} {MONTHS[today.month - 1]}</b>"
+        f"📊 <b>{day_name(today, today).capitalize()}, {today.day} {MONTHS[today.month - 1]}</b>",
+        "",
+        *day_line(totals["kcal"], targets["kcal"], "Съедено"),
     ]
-    if targets["kcal"]:
-        left = targets["kcal"] - totals["kcal"]
-        tail = f"осталось {n(left)}" if left >= 0 else f"больше нормы на {n(-left)}"
-        lines.append(f"<b>{n(totals['kcal'])} из {targets['kcal']} ккал</b> · {tail}")
-        lines.append(progress_bar(totals["kcal"] / targets["kcal"]))
-    else:
-        lines.append(f"<b>{n(totals['kcal'])} ккал</b>")
 
     def macro(label, key):
         goal = targets[key]
@@ -161,16 +200,17 @@ def today_view(summary: dict, today: date, weight=None, change=None) -> dict:
     lines.append("")
     meals = summary["meals"]
     if not meals:
-        lines.append("Пока ничего не записано. Пришлите фото еды или опишите словами.")
+        lines.append("Пока ничего не записано. Начните сессию и пришлите фото еды.")
     for meal in meals:
-        kind = MEAL_TYPES.get(meal["meal_type"] or "", "Прием пищи")
-        draft = " <i>(черновик)</i>" if meal["status"] == "draft" else ""
+        icon = MEAL_ICONS.get(meal["meal_type"] or "", "🍽")
+        draft = " <i>черновик</i>" if meal["status"] == "draft" else ""
         lines.append(
-            f"{kind} {meal['eaten_at'][11:16]} — {escape(meal['title'])}, "
-            f"{n(meal['kcal'])} ккал{draft}"
+            f"{icon} {meal['eaten_at'][11:16]} {escape(meal['title'])} — "
+            f"<b>{n(meal['kcal'])}</b>{draft}"
         )
     if weight:
-        delta = f" ({'+' if change > 0 else ''}{n(change, 1)} за неделю)" if change else ""
-        lines += ["", f"⚖️ Вес: {n(weight.weight_kg, 1)} кг{delta}"]
+        sign = "+" if change and change > 0 else ""
+        delta = f", {sign}{n(change, 1).replace('-', '−')} за неделю" if change else ""
+        lines += ["", f"⚖️ {n(weight.weight_kg, 1)} кг{delta}"]
     link = site_button("Открыть дневник", "/")
     return view("\n".join(lines), [[link]] if link else [])

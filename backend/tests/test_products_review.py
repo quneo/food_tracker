@@ -130,7 +130,7 @@ def test_assistant_saves_a_product_from_a_label(person, runner, worker, sessions
     assert meal["items"][0]["product_id"] == product["id"]
     assert meal["ai_comment"] == "Хороший перекус: 7 г белка без сахара сверху."
     card = outbox(sessions)[-1].payload["text"]
-    assert "💬 Хороший перекус" in card
+    assert "💬 <i>Хороший перекус" in card
     assert person.web.get(f"/api/products/{product['id']}").json()["uses"] == 1
 
 
