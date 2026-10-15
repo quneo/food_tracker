@@ -69,9 +69,10 @@ export function query(values: Record<string, string | number | boolean | null | 
 /** `version` changes the address when the same photo may look different (body photos
  * before and after the photo code). */
 export const mediaUrl = (id: number, size: 'preview' | 'original' = 'preview', version = '') => {
-  const params = new URLSearchParams()
+  // Raised once when browsers may hold a wrong picture for an id: until October 2026 the
+  // id of a deleted photo could be given to a new one.
+  const params = new URLSearchParams({ r: '2' })
   if (size === 'original') params.set('size', 'original')
   if (version) params.set('v', version)
-  const search = params.toString()
-  return `/api/media/${id}${search ? `?${search}` : ''}`
+  return `/api/media/${id}?${params}`
 }

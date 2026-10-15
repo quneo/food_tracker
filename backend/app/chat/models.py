@@ -71,7 +71,11 @@ class PendingAction(Base):
     or an undo for what the assistant just recorded."""
 
     __tablename__ = "pending_actions"
-    __table_args__ = (CheckConstraint("status IN ('pending', 'done', 'cancelled')"),)
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'done', 'cancelled')"),
+        # Never hand out a deleted row's id again (see migration 0007).
+        {"sqlite_autoincrement": True},
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     kind: Mapped[str] = mapped_column(String(32))

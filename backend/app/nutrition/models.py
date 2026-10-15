@@ -21,6 +21,8 @@ class Meal(Base):
         CheckConstraint("source IN ('photo', 'text', 'manual')"),
         CheckConstraint("confidence IN ('low', 'medium', 'high')"),
         Index("ix_meals_user_day", "user_id", "eaten_on"),
+        # Never hand out a deleted row's id again (see migration 0007).
+        {"sqlite_autoincrement": True},
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))

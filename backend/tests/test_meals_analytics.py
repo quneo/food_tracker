@@ -69,6 +69,24 @@ def test_manual_meal_edit_and_photos(person, files):
     assert files.objects == {}  # original and preview deleted from storage
 
 
+def test_a_deleted_photo_never_lends_its_id(person):
+    """The browser keeps /api/media/<id> for a week: a new photo with a deleted one's id
+    would show the old picture."""
+
+    def add_photo(color):
+        created = person.web.post("/api/meals", json=meal("Перекус", 200)).json()
+        photo = person.web.post(
+            f"/api/meals/{created['id']}/photos",
+            files={"photo": ("p.jpg", jpeg(color=color), "image/jpeg")},
+        ).json()["photos"][0]
+        return created["id"], photo["id"]
+
+    meal_id, photo_id = add_photo((200, 40, 40))
+    assert person.web.delete(f"/api/meals/{meal_id}").status_code == 204
+    next_meal, next_photo = add_photo((40, 200, 40))
+    assert next_photo > photo_id and next_meal > meal_id
+
+
 def test_future_time_is_refused(person):
     later = (date.today() + timedelta(days=2)).isoformat() + "T12:00"
     assert person.web.post("/api/meals", json=meal("Суп", 200, later)).status_code == 400

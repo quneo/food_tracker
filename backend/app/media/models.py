@@ -16,6 +16,8 @@ class Media(Base):
     __tablename__ = "media"
     __table_args__ = (
         CheckConstraint("kind IN ('chat', 'meal', 'body', 'product')", name="ck_media_kind"),
+        # Never hand out a deleted row's id again (see migration 0007).
+        {"sqlite_autoincrement": True},
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
