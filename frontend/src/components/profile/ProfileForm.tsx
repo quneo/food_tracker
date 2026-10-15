@@ -228,7 +228,7 @@ export function ProfileForm({ profile }: { profile: Profile }) {
 
   return (
     <form
-      className="grid gap-4 min-[1180px]:grid-cols-2 min-[1180px]:items-start"
+      className="grid grid-cols-1 gap-4 min-[1180px]:grid-cols-2 min-[1180px]:items-start"
       onSubmit={(event) => {
         event.preventDefault()
         save.mutate()
@@ -246,7 +246,7 @@ export function ProfileForm({ profile }: { profile: Profile }) {
             value={form.sex}
             onChange={(value) => set('sex', value)}
           />
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
               <Label htmlFor="birth-date">Дата рождения</Label>
               <Input

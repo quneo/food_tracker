@@ -152,7 +152,7 @@ function WeightBlock() {
             description="Пришлите вес боту, например «72,4», или запишите здесь."
           />
         ) : (
-          <div className="grid gap-4 min-[1180px]:grid-cols-[minmax(0,1fr)_300px] min-[1180px]:items-start">
+          <div className="grid grid-cols-1 gap-4 min-[1180px]:grid-cols-[minmax(0,1fr)_300px] min-[1180px]:items-start">
             {points.length > 1 ? (
               <TrendLine
                 points={points}
@@ -457,7 +457,7 @@ function MeasurementsForm({ latest, onDone }: { latest: Measurement[]; onDone: (
           )
         })}
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-2">
           <Label htmlFor="measurements-time">Когда</Label>
           <Input

@@ -48,7 +48,7 @@ export function AccountSection() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
-          <dl className="grid gap-3 text-sm sm:grid-cols-2">
+          <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-muted-foreground">{user.bastion ? 'Имя' : 'Имя в Telegram'}</dt>
               <dd className="font-medium">{user.name}</dd>

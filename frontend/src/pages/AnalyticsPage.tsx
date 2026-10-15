@@ -165,7 +165,7 @@ export default function AnalyticsPage() {
       {daily.isError ? (
         <ErrorState error={daily.error} retry={() => daily.refetch()} />
       ) : daily.isPending ? (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Skeleton className="h-[330px] rounded-[20px]" />
           <Skeleton className="h-[330px] rounded-[20px]" />
         </div>
@@ -179,7 +179,7 @@ export default function AnalyticsPage() {
         </Card>
       ) : (
         <div className={cn('flex flex-col gap-4 transition-opacity', stale && 'opacity-60')}>
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>Калории</CardTitle>
@@ -223,7 +223,7 @@ export default function AnalyticsPage() {
             <ReportCard report={report.data} />
           )}
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>Вес</CardTitle>

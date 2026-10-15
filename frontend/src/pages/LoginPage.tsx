@@ -73,7 +73,7 @@ export default function LoginPage() {
         </span>
         <ThemeToggle />
       </header>
-      <main className="grid flex-1 content-start items-center justify-items-center gap-10 pt-2 pb-16 lg:grid-cols-[minmax(0,1fr)_420px] lg:content-center lg:justify-items-stretch lg:gap-16">
+      <main className="grid flex-1 grid-cols-1 content-start items-center justify-items-center gap-10 pt-2 pb-16 lg:grid-cols-[minmax(0,1fr)_420px] lg:content-center lg:justify-items-stretch lg:gap-16">
         <section className="flex flex-col items-center gap-5 text-center lg:items-start lg:text-left">
           <img
             src={breakfast}

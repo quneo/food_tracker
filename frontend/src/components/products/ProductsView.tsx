@@ -21,10 +21,16 @@ import type { Product, ProductIn } from '@/types'
 const MAX_PHOTOS = 4
 
 /** «Мои продукты»: the person's own milk, bars, yogurts with numbers from their labels. */
-export function ProductsView() {
+export function ProductsView({
+  adding,
+  onAddingChange,
+}: {
+  adding: boolean
+  onAddingChange: (adding: boolean) => void
+}) {
   const [search, setSearch] = useState('')
   const [q, setQ] = useState('')
-  const [open, setOpen] = useState<number | 'new' | null>(null)
+  const [open, setOpen] = useState<number | null>(null)
   useEffect(() => {
     const timer = setTimeout(() => setQ(search.trim()), 250)
     return () => clearTimeout(timer)
@@ -36,24 +42,19 @@ export function ProductsView() {
   const list = products.data ?? []
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-0 flex-1 sm:max-w-sm">
-          <Search
-            className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Найти продукт"
-            aria-label="Найти продукт"
-            className="rounded-full pl-10"
-          />
-        </div>
-        <Button onClick={() => setOpen('new')}>
-          <Plus />
-          Добавить продукт
-        </Button>
+      <div className="relative sm:max-w-sm">
+        <Search
+          className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground"
+          aria-hidden="true"
+        />
+        <Input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Найти продукт"
+          aria-label="Найти продукт"
+          className="rounded-full pl-10"
+        />
       </div>
 
       {products.isPending ? (
@@ -70,10 +71,17 @@ export function ProductsView() {
                 ? 'Попробуйте другое слово.'
                 : 'Пришлите боту фото этикетки с подписью «запомни мое молоко» — он сохранит КБЖУ и фото состава. Или добавьте продукт здесь.'
             }
-          />
+          >
+            {!q && (
+              <Button onClick={() => onAddingChange(true)}>
+                <Plus />
+                Добавить продукт
+              </Button>
+            )}
+          </EmptyState>
         </div>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 min-[1180px]:grid-cols-3">
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 min-[1180px]:grid-cols-3">
           {list.map((product) => (
             <li key={product.id}>
               <ProductCard product={product} onOpen={() => setOpen(product.id)} />
@@ -83,10 +91,17 @@ export function ProductsView() {
       )}
 
       <ProductSheet
-        product={typeof open === 'number' ? (list.find((p) => p.id === open) ?? null) : null}
-        open={open !== null}
-        onOpenChange={(value) => !value && setOpen(null)}
-        onCreated={(product) => setOpen(product.id)}
+        product={open !== null ? (list.find((p) => p.id === open) ?? null) : null}
+        open={adding || open !== null}
+        onOpenChange={(value) => {
+          if (value) return
+          setOpen(null)
+          onAddingChange(false)
+        }}
+        onCreated={(product) => {
+          onAddingChange(false)
+          setOpen(product.id)
+        }}
       />
     </div>
   )
@@ -162,9 +177,9 @@ const toDraft = (product: Product | null): Draft => ({
 
 const NUMBERS: { field: keyof Draft; label: string; max: number }[] = [
   { field: 'kcal', label: 'Ккал', max: 900 },
-  { field: 'protein', label: 'Белки, г', max: 100 },
-  { field: 'fat', label: 'Жиры, г', max: 100 },
-  { field: 'carbs', label: 'Углеводы, г', max: 100 },
+  { field: 'protein', label: 'Белки', max: 100 },
+  { field: 'fat', label: 'Жиры', max: 100 },
+  { field: 'carbs', label: 'Углеводы', max: 100 },
 ]
 
 /** -> values for the API, or the first problem as a message. */
@@ -269,7 +284,7 @@ function ProductSheet({
         }}
       >
         {product && <ProductPhotos product={product} />}
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-2">
             <Label htmlFor="product-name">Название</Label>
             <Input
@@ -284,11 +299,11 @@ function ProductSheet({
             <Input id="product-brand" value={draft.brand} onChange={set('brand')} />
           </div>
         </div>
-        <fieldset className="flex flex-col gap-2">
+        <fieldset className="flex min-w-0 flex-col">
           <legend className="mb-2 text-sm font-medium">На 100 г</legend>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-4 gap-2">
             {NUMBERS.map(({ field, label }) => (
-              <div key={field} className="flex flex-col gap-1.5">
+              <div key={field} className="flex min-w-0 flex-col gap-1.5">
                 <Label htmlFor={`product-${field}`} className="text-xs text-muted-foreground">
                   {label}
                 </Label>
@@ -297,14 +312,15 @@ function ProductSheet({
                   inputMode="decimal"
                   value={draft[field]}
                   onChange={set(field)}
-                  className="tabular"
+                  className="tabular px-2.5"
                 />
               </div>
             ))}
           </div>
         </fieldset>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <div className="flex flex-col gap-1.5">
+        <fieldset className="grid min-w-0 grid-cols-3 gap-2">
+          <legend className="mb-2 text-sm font-medium">Порция и упаковка</legend>
+          <div className="flex min-w-0 flex-col gap-1.5">
             <Label htmlFor="product-portion-name" className="text-xs text-muted-foreground">
               Порция
             </Label>
@@ -313,9 +329,10 @@ function ProductSheet({
               value={draft.portion_name}
               onChange={set('portion_name')}
               placeholder="стакан"
+              className="px-2.5"
             />
           </div>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex min-w-0 flex-col gap-1.5">
             <Label htmlFor="product-portion-grams" className="text-xs text-muted-foreground">
               Вес порции, г
             </Label>
@@ -324,9 +341,10 @@ function ProductSheet({
               inputMode="decimal"
               value={draft.portion_grams}
               onChange={set('portion_grams')}
+              className="tabular px-2.5"
             />
           </div>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex min-w-0 flex-col gap-1.5">
             <Label htmlFor="product-package" className="text-xs text-muted-foreground">
               Упаковка, г
             </Label>
@@ -335,9 +353,10 @@ function ProductSheet({
               inputMode="decimal"
               value={draft.package_grams}
               onChange={set('package_grams')}
+              className="tabular px-2.5"
             />
           </div>
-        </div>
+        </fieldset>
         <div className="flex flex-col gap-2">
           <Label htmlFor="product-comment">Комментарий</Label>
           <Textarea
@@ -403,7 +422,7 @@ function ProductPhotos({ product }: { product: Product }) {
     onSuccess: refresh,
   })
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap items-start gap-2">
       {product.photos.map((photo, index) => (
         <div key={photo.id} className="relative">
           <button
@@ -412,7 +431,7 @@ function ProductPhotos({ product }: { product: Product }) {
             onClick={() => setViewing(index)}
             aria-label={`Открыть фото ${index + 1}`}
           >
-            <Photo id={photo.id} alt={`Фото ${index + 1}`} className="size-24 rounded-[14px]" />
+            <Photo id={photo.id} alt={`Фото ${index + 1}`} className="size-20 rounded-[14px]" />
           </button>
           <button
             type="button"
@@ -424,17 +443,30 @@ function ProductPhotos({ product }: { product: Product }) {
           </button>
         </div>
       ))}
-      {product.photos.length < MAX_PHOTOS && (
+      {product.photos.length === 0 ? (
         <Button
           type="button"
           variant="outline"
-          className="size-24 flex-col gap-1 rounded-[14px] border-dashed text-xs font-normal text-muted-foreground"
           onClick={() => input.current?.click()}
           disabled={upload.isPending}
         >
-          <ImagePlus className="size-5" />
-          {upload.isPending ? 'Загрузка…' : 'Фото этикетки'}
+          <ImagePlus />
+          {upload.isPending ? 'Загрузка…' : 'Добавить фото этикетки'}
         </Button>
+      ) : (
+        product.photos.length < MAX_PHOTOS && (
+          <Button
+            type="button"
+            variant="outline"
+            className="size-20 rounded-[14px] border-dashed text-muted-foreground"
+            onClick={() => input.current?.click()}
+            disabled={upload.isPending}
+            aria-label="Добавить фото этикетки"
+            title="Добавить фото этикетки"
+          >
+            <ImagePlus className="size-5" />
+          </Button>
+        )
       )}
       <input
         ref={input}

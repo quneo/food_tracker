@@ -159,6 +159,10 @@
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
   }
+  /* Safari widens the whole page for anything wider than the screen; clip instead. */
+  html {
+    overflow-x: clip;
+  }
   button:not(:disabled),
   [role='button']:not([aria-disabled='true']),
   a,
@@ -516,9 +520,25 @@
   letter-spacing: -0.005em;
 }
 
+/* A row of tabs that scrolls sideways on a narrow screen instead of wrapping. */
+.tabs-scroll {
+  overflow-x: auto;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+.tabs-scroll::-webkit-scrollbar {
+  display: none;
+}
+@media (max-width: 639px) {
+  .tabs-scroll {
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+}
+
 /* Two columns from 1180px: the page and a sticky side panel. */
 .page-grid {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 .page-side {

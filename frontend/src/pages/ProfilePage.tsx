@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { profileApi } from '@/api/endpoints'
@@ -27,6 +28,13 @@ export default function ProfilePage() {
   const section = sections.some((item) => item.value === params.get('section'))
     ? params.get('section')!
     : 'goals'
+  // The tab row scrolls on a phone: keep the open section in view.
+  const tabs = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    tabs.current
+      ?.querySelector('[data-state="active"]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [section])
   const profile = useQuery({
     queryKey: keys.profile,
     queryFn: ({ signal }) => profileApi.get({ signal }),
@@ -51,7 +59,7 @@ export default function ProfilePage() {
         }}
         className="gap-5"
       >
-        <TabsList className="flex h-auto w-full flex-wrap justify-start sm:w-fit">
+        <TabsList ref={tabs} className="tabs-scroll flex h-auto w-full justify-start sm:w-fit">
           {sections.map((item) => (
             <TabsTrigger key={item.value} value={item.value} className="flex-none">
               {item.label}

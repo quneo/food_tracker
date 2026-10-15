@@ -99,7 +99,7 @@ function Totals({ row }: { row: AiUsagePeriod }) {
           {average !== null && <>, в среднем {num(average)} на запрос</>}
         </p>
       </div>
-      <dl className="grid gap-2 sm:grid-cols-2">
+      <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div className="rounded-[14px] bg-muted px-3.5 py-3">
           <dt className="text-xs text-muted-foreground">Вход</dt>
           <dd className="serif-number text-xl">{num(row.input)}</dd>

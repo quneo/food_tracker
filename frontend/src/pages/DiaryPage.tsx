@@ -32,6 +32,7 @@ export default function DiaryPage() {
   const { open } = useMealParam()
   const [params, setParams] = useSearchParams()
   const [adding, setAdding] = useState(false)
+  const [addingProduct, setAddingProduct] = useState(false)
 
   const rawFrom = params.get('from') ?? ''
   const rawTo = params.get('to') ?? ''
@@ -100,16 +101,14 @@ export default function DiaryPage() {
             )}
           </div>
         )}
-        {!products && (
-          <Button
-            onClick={() => setAdding(true)}
-            className="max-sm:w-11 max-sm:px-0"
-            aria-label="Добавить запись"
-          >
-            <Plus />
-            <span className="max-sm:sr-only">Добавить</span>
-          </Button>
-        )}
+        <Button
+          onClick={() => (products ? setAddingProduct(true) : setAdding(true))}
+          className="max-sm:w-11 max-sm:px-0"
+          aria-label={products ? 'Добавить продукт' : 'Добавить запись'}
+        >
+          <Plus />
+          <span className="max-sm:sr-only">{products ? 'Добавить продукт' : 'Добавить'}</span>
+        </Button>
       </PageHeader>
 
       <div className="mb-4">
@@ -142,7 +141,7 @@ export default function DiaryPage() {
       </div>
 
       {products ? (
-        <ProductsView />
+        <ProductsView adding={addingProduct} onAddingChange={setAddingProduct} />
       ) : (
         <div className="chat-column">
           {feed.isPending ? (
