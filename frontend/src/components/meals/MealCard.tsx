@@ -23,10 +23,16 @@ export function MealCard({
   const range = kcalRange(meal)
   const ids = meal.photos.map((photo) => photo.id)
   const shown = meal.photos.slice(0, 3)
+  // One photo keeps its own shape, like in a chat: a tall one makes the message narrower
+  // instead of losing its top and bottom.
+  const single = shown.length === 1 ? shown[0] : null
+  const ratio = single ? clamp(single.width / single.height, 0.75, 1.8) : 1
+  const width = single ? Math.round(clamp(460 * ratio, 300, 540)) : null
   return (
     <div className="flex w-full flex-col items-start gap-1.5">
       <article
         className={cn('bubble', draft && 'is-draft')}
+        style={width ? { width: `min(100%, ${width}px)` } : undefined}
         aria-label={`${meal.title}, ${timeOf(meal.eaten_at)}`}
       >
         {shown.length > 0 && (
@@ -45,7 +51,8 @@ export function MealCard({
                 <Photo
                   id={photo.id}
                   alt=""
-                  className={cn('w-full', shown.length === 1 ? 'aspect-[4/3]' : 'aspect-square')}
+                  className={cn('w-full', !single && 'aspect-square')}
+                  style={single ? { aspectRatio: String(ratio) } : undefined}
                 />
                 {index === 2 && meal.photos.length > 3 && (
                   <span className="absolute inset-0 grid place-items-center bg-black/45 text-lg font-medium text-white">
@@ -119,7 +126,7 @@ export function MealCard({
         )}
       </article>
       {draft && (
-        <div className="inline-keys">
+        <div className="inline-keys" style={width ? { width: `min(100%, ${width}px)` } : undefined}>
           <button
             type="button"
             onClick={() => confirm.mutate(meal.id)}
@@ -144,3 +151,5 @@ export function MealCard({
     </div>
   )
 }
+
+const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value))

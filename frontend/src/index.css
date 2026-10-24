@@ -51,6 +51,9 @@
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
   --color-track: var(--track);
+  --color-lime: var(--lime);
+  --color-lime-soft: var(--lime-soft);
+  --color-lime-ink: var(--lime-ink);
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 14px;
@@ -67,11 +70,19 @@
   --wall-2: #f4eab3;
   --wall-3: #b7e0d4;
   --wall-4: #f7d3bb;
-  --pattern: rgba(32, 64, 46, 0.15);
+  --pattern: rgba(32, 64, 46, 0.11);
   --foreground: #17221c;
   --card: #ffffff;
   --popover: #ffffff;
-  --glass: 80%;
+  --glass: 86%;
+  /* Spring lime: the chosen day, the day's budget, the bar under the pointer. */
+  --lime: #c6ea72;
+  --lime-soft: rgba(198, 234, 114, 0.32);
+  --lime-ink: #1d3a12;
+  --hero-1: #effad6;
+  --hero-2: #cdeb88;
+  --hero-ink: #17301a;
+  --stripe: rgba(23, 34, 28, 0.08);
   --glass-edge: rgba(255, 255, 255, 0.7);
   --glass-shadow: 0 1px 1px rgba(23, 34, 28, 0.04), 0 10px 30px -12px rgba(23, 34, 28, 0.16);
   --muted: rgba(23, 34, 28, 0.055);
@@ -107,11 +118,18 @@
   --wall-2: #26271a;
   --wall-3: #0f2131;
   --wall-4: #2c1c25;
-  --pattern: rgba(214, 236, 222, 0.065);
+  --pattern: rgba(214, 236, 222, 0.055);
   --foreground: #e9f0eb;
   --card: #15201c;
   --popover: #18241f;
-  --glass: 78%;
+  --glass: 84%;
+  --lime: #b4e063;
+  --lime-soft: rgba(180, 224, 99, 0.14);
+  --lime-ink: #112008;
+  --hero-1: #1d3222;
+  --hero-2: #2b4a21;
+  --hero-ink: #eaf6dc;
+  --stripe: rgba(233, 240, 235, 0.07);
   --glass-edge: rgba(255, 255, 255, 0.06);
   --glass-shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.6);
   --muted: rgba(233, 240, 235, 0.06);
@@ -157,9 +175,10 @@
     background: var(--background);
     color: var(--foreground);
     -webkit-font-smoothing: antialiased;
-    overflow-x: hidden;
   }
-  /* Safari widens the whole page for anything wider than the screen; clip instead. */
+  /* Safari widens the whole page for anything wider than the screen; clip instead. Only
+     on the root: overflow on body as well would make body the scroller of sticky things
+     (the side rail, date pills), and they would scroll away with the page. */
   html {
     overflow-x: clip;
   }
@@ -459,9 +478,42 @@
 .main-content {
   min-width: 0;
   width: 100%;
-  max-width: 1160px;
+  max-width: 1240px;
+  justify-self: center;
   padding: 30px 36px 56px;
 }
+
+/* «Записать»: a wide button at the top of the rail; in the phone's tab bar, a round
+   button raised in the middle. */
+.nav-record {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 48px;
+  margin: 0 0 14px;
+  border-radius: 16px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 15px;
+  font-weight: 600;
+  order: -1;
+  box-shadow: 0 10px 24px -12px color-mix(in srgb, var(--primary) 80%, transparent);
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s;
+}
+.nav-record:hover {
+  box-shadow: 0 12px 28px -10px color-mix(in srgb, var(--primary) 85%, transparent);
+}
+.nav-record:active {
+  transform: scale(0.97);
+}
+.nav-record svg {
+  width: 21px;
+  height: 21px;
+}
+
 .theme-toggle {
   width: 40px;
   height: 40px;
@@ -626,30 +678,7 @@
   letter-spacing: -0.01em;
 }
 
-/* Calorie ring and macro bars. The ring draws itself once when the day loads. */
-.ring-track {
-  stroke: var(--track);
-}
-.ring-value {
-  stroke: var(--kcal);
-  transition: stroke-dashoffset 0.9s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.ring-over {
-  stroke: var(--destructive);
-}
-.macro-bar {
-  position: relative;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--track);
-  overflow: hidden;
-}
-.macro-bar > span {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: 999px;
-  transition: width 0.6s ease;
-}
+/* Macro marks: the same color in every dot, track and chart. */
 .macro-dot {
   display: inline-block;
   width: 8px;
@@ -1026,6 +1055,17 @@
 .recharts-cartesian-grid line {
   stroke: var(--grid);
 }
+/* A tap picks a day and the numbers show above the chart: no focus box, and on touch
+   screens no tooltip covering the bars. */
+.recharts-wrapper :focus:not(:focus-visible),
+.recharts-wrapper:focus:not(:focus-visible) {
+  outline: none;
+}
+@media (hover: none) {
+  .recharts-tooltip-wrapper {
+    display: none;
+  }
+}
 
 .form-error {
   color: var(--destructive);
@@ -1116,6 +1156,37 @@
     width: 22px;
     height: 22px;
   }
+  .app-nav .nav-profile {
+    display: none;
+  }
+  .nav-record {
+    order: 0;
+    flex: 0 0 60px;
+    align-self: center;
+    flex-direction: column;
+    gap: 0;
+    width: 60px;
+    height: 60px;
+    min-height: 0;
+    margin: -30px 2px 0;
+    padding: 0;
+    border-radius: 999px;
+    font-size: 0;
+    box-shadow:
+      0 10px 22px -8px color-mix(in srgb, var(--primary) 75%, transparent),
+      0 0 0 5px color-mix(in srgb, var(--background) 92%, transparent);
+  }
+  .nav-record svg {
+    width: 26px;
+    height: 26px;
+  }
+  .nav-record .nav-record-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
   .page-heading {
     margin-bottom: 16px;
   }
@@ -1185,4 +1256,368 @@
   font-family: var(--font-serif);
   font-size: 19px;
   font-weight: 600;
+}
+
+/* Today: a week of day rings, the day's budget on spring lime, hatched tracks for what is
+   still left. The hatching is the one bold device; everything around it stays quiet. */
+.week-strip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.day-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 7px 0 8px;
+  border-radius: 18px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1;
+  transition: background 0.15s;
+}
+.day-cell:hover:not(:disabled) {
+  background: var(--muted);
+}
+.day-cell:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+.day-cell[aria-pressed='true'] {
+  background: var(--lime-soft);
+  color: var(--foreground);
+}
+.day-ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.day-ring svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+.day-ring span {
+  position: relative;
+}
+.day-ring .ring-bg {
+  fill: color-mix(in srgb, var(--card) 80%, transparent);
+  stroke: var(--track);
+}
+.day-ring .ring-fill {
+  fill: none;
+  stroke: var(--primary);
+  stroke-linecap: round;
+}
+.day-ring .ring-fill.is-over {
+  stroke: var(--kcal);
+}
+.day-cell[aria-pressed='true'] .ring-bg {
+  fill: var(--lime);
+}
+.day-cell[aria-pressed='true'] .day-ring {
+  color: var(--lime-ink);
+}
+.day-cell[aria-current='date'] .day-label {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.hero-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 28px;
+  padding: 20px 22px 22px;
+  background: linear-gradient(150deg, var(--hero-1) 0%, var(--hero-2) 100%);
+  color: var(--hero-ink);
+  border: 1px solid color-mix(in srgb, #fff 55%, transparent);
+  box-shadow: var(--glass-shadow);
+}
+.dark .hero-card {
+  border-color: rgba(255, 255, 255, 0.07);
+}
+.hero-card .hero-muted {
+  color: color-mix(in srgb, var(--hero-ink) 66%, transparent);
+}
+
+/* A progress track: the eaten part solid, the rest hatched. */
+.striped-track {
+  position: relative;
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(-45deg, var(--stripe) 0 5px, transparent 5px 10px), var(--track);
+}
+.hero-card .striped-track {
+  height: 18px;
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      color-mix(in srgb, var(--hero-ink) 13%, transparent) 0 5px,
+      transparent 5px 10px
+    ),
+    color-mix(in srgb, #fff 50%, transparent);
+}
+.dark .hero-card .striped-track {
+  background:
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.08) 0 5px, transparent 5px 10px),
+    rgba(0, 0, 0, 0.22);
+}
+.striped-track > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: var(--fill, var(--primary));
+  transition: width 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.hero-card .striped-track > span {
+  background: linear-gradient(90deg, #2b8455, #5fb158);
+}
+.dark .hero-card .striped-track > span {
+  background: linear-gradient(90deg, #6cd49a, #b4e063);
+}
+.striped-track > span.is-over {
+  background: var(--kcal) !important;
+}
+.striped-track.is-thin {
+  height: 8px;
+}
+
+/* Bars of the week: hatched days, the chosen one in lime with its share above. */
+.week-bars {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  height: 168px;
+  padding-top: 26px;
+}
+.week-bar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1;
+}
+.week-bar:disabled {
+  cursor: default;
+}
+.week-bar .bar-column {
+  position: relative;
+  width: 100%;
+  max-width: 40px;
+  flex: 1;
+  border-radius: 12px;
+  background:
+    repeating-linear-gradient(-45deg, var(--stripe) 0 4px, transparent 4px 8px), var(--track);
+}
+.week-bar .bar-value {
+  position: absolute;
+  inset: auto 0 0;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary) 28%, var(--card));
+  transition: height 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dark .week-bar .bar-value {
+  background: color-mix(in srgb, var(--primary) 32%, transparent);
+}
+.week-bar[aria-pressed='true'] {
+  color: var(--foreground);
+  font-weight: 600;
+}
+.week-bar[aria-pressed='true'] .bar-value {
+  background: linear-gradient(
+    180deg,
+    var(--lime),
+    color-mix(in srgb, var(--lime) 55%, var(--primary))
+  );
+}
+.week-bar .bar-value.is-over {
+  background: color-mix(in srgb, var(--kcal) 40%, var(--card));
+}
+.week-bar[aria-pressed='true'] .bar-value.is-over {
+  background: var(--kcal);
+}
+.week-bar .bar-pill {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, calc(-100% - 6px));
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--foreground);
+  color: var(--background);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.week-target {
+  position: absolute;
+  inset-inline: 0;
+  border-top: 1.5px dashed color-mix(in srgb, var(--foreground) 28%, transparent);
+  pointer-events: none;
+}
+
+/* «Записать»: what the photos show, as tiles; the photo under a scanning line while the
+   assistant counts (the page's single moving thing). */
+.mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.mode-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 72px;
+  padding: 10px 4px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--card) 60%, transparent);
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.15;
+  text-align: center;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.mode-tab svg {
+  width: 22px;
+  height: 22px;
+}
+.mode-tab:hover {
+  color: var(--foreground);
+}
+.mode-tab[aria-selected='true'] {
+  border-color: var(--primary);
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 190px;
+  padding: 20px;
+  border: 1.5px dashed var(--input);
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--card) 50%, transparent);
+  color: var(--muted-foreground);
+  text-align: center;
+}
+.drop-zone.is-over {
+  border-color: var(--primary);
+  background: var(--accent);
+}
+.scanner {
+  position: relative;
+  overflow: hidden;
+  border-radius: 24px;
+  background: var(--muted);
+}
+.scanner::before,
+.scanner::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+.scanner::before {
+  inset: 14px;
+  z-index: 2;
+  background:
+    linear-gradient(#fff, #fff) top left / 26px 3px,
+    linear-gradient(#fff, #fff) top left / 3px 26px,
+    linear-gradient(#fff, #fff) top right / 26px 3px,
+    linear-gradient(#fff, #fff) top right / 3px 26px,
+    linear-gradient(#fff, #fff) bottom left / 26px 3px,
+    linear-gradient(#fff, #fff) bottom left / 3px 26px,
+    linear-gradient(#fff, #fff) bottom right / 26px 3px,
+    linear-gradient(#fff, #fff) bottom right / 3px 26px;
+  background-repeat: no-repeat;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+}
+.scanner::after {
+  left: 0;
+  right: 0;
+  top: -35%;
+  height: 35%;
+  z-index: 1;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in srgb, var(--lime) 50%, transparent)
+  );
+  border-bottom: 2px solid var(--lime);
+  animation: scan 2.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes scan {
+  from {
+    top: -35%;
+  }
+  to {
+    top: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scanner::after {
+    animation: none;
+    top: auto;
+    bottom: 0;
+  }
+}
+
+/* A small weight line: the last weeks at a glance. */
+.sparkline .line {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sparkline .area {
+  fill: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.sparkline circle {
+  fill: var(--card);
+  stroke: var(--primary);
+  stroke-width: 2;
+}
+
+/* The way to the profile on a phone, where the tab bar has no room for it. */
+.header-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--wall-3), var(--primary));
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--card) 80%, transparent);
+}
+@media (min-width: 900px) {
+  .header-avatar {
+    display: none;
+  }
 }

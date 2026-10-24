@@ -30,7 +30,8 @@ export function MealRow({ meal, onOpen }: { meal: Meal; onOpen: (id: number) => 
         </span>
         <span className="flex shrink-0 flex-col items-end gap-1">
           <span className="text-xs text-muted-foreground">
-            {mealTypeLabel(meal.meal_type)},{' '}
+            {/* A narrow phone keeps the room for the title and macros. */}
+            <span className="max-[420px]:hidden">{mealTypeLabel(meal.meal_type)}, </span>
             <span className="tabular">{timeOf(meal.eaten_at)}</span>
           </span>
           <span className={cn('serif-number text-[17px]', draft && 'text-muted-foreground')}>

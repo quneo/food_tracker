@@ -2,6 +2,7 @@ import { api, json, query } from './client'
 import type {
   AdminUser,
   AiStatus,
+  AssistantJob,
   AuthConfig,
   ChatMessage,
   DailyRow,
@@ -36,6 +37,7 @@ import type {
   WeightIn,
   Product,
   ProductIn,
+  RecordMode,
 } from '@/types'
 
 type Signal = { signal?: AbortSignal }
@@ -79,6 +81,20 @@ export const mealsApi = {
   },
   removePhoto: (id: number, mediaId: number) =>
     api<Meal>(`/meals/${id}/photos/${mediaId}`, { method: 'DELETE' }),
+  day: (day: string, { signal }: Signal = {}) => api<DaySummary>(`/days/${day}`, { signal }),
+}
+
+/** A meal sent from the «Записать» form: the assistant estimates it in the background. */
+export const assistantApi = {
+  logMeal: (data: { text: string; mode: RecordMode; photos: Blob[] }) => {
+    const form = new FormData()
+    form.append('text', data.text)
+    form.append('mode', data.mode)
+    data.photos.forEach((photo, index) => form.append('photos', photo, `photo-${index + 1}.jpg`))
+    return api<AssistantJob>('/assistant/meals', { method: 'POST', body: form })
+  },
+  job: (id: number, { signal }: Signal = {}) =>
+    api<AssistantJob>(`/assistant/jobs/${id}`, { signal }),
 }
 
 export const productsApi = {

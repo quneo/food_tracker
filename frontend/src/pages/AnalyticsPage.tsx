@@ -187,7 +187,7 @@ export default function AnalyticsPage() {
                   {report.data?.averages.kcal != null
                     ? `В среднем ${num(report.data.averages.kcal)} ккал в день`
                     : grouping === 'day'
-                      ? 'Нажмите на столбец, чтобы открыть день'
+                      ? 'Нажмите на день, чтобы увидеть цифры'
                       : 'Среднее за день'}
                 </CardDescription>
               </CardHeader>

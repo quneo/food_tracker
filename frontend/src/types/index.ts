@@ -156,6 +156,18 @@ export interface DaySummary {
   drafts: number
 }
 
+/** What the photos sent to the assistant show. */
+export type RecordMode = 'food' | 'label'
+
+export interface AssistantJob {
+  id: number
+  status: 'queued' | 'running' | 'done' | 'failed'
+  reply: string | null
+  notes: string[]
+  meals: Meal[]
+  error: string | null
+}
+
 // Analytics
 
 export type DayStatus = 'empty' | 'partial' | 'complete'

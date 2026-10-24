@@ -1,11 +1,19 @@
-import { useEffect } from 'react'
+import { Fragment, useEffect } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { ChartColumnBig, House, NotebookText, PersonStanding, UserRound } from 'lucide-react'
+import {
+  ChartColumnBig,
+  House,
+  NotebookText,
+  PersonStanding,
+  ScanLine,
+  UserRound,
+} from 'lucide-react'
 import { useUser } from '@/hooks/useAuth'
 import { PageReveal } from '@/components/shared/PageReveal'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
 import { LeafMark } from '@/components/shared/LeafMark'
 import { MealSheetHost } from '@/components/meals/MealSheet'
+import { RecordSheetHost, useRecordParam } from '@/components/record/RecordSheet'
 
 const LINKS = [
   { to: '/', label: 'Сегодня', title: 'Сегодня', icon: House },
@@ -17,6 +25,7 @@ const LINKS = [
 
 export function AppShell() {
   const { pathname } = useLocation()
+  const record = useRecordParam()
   useEffect(() => {
     window.scrollTo(0, 0)
     const page = LINKS.find((link) => link.to === pathname)
@@ -37,11 +46,20 @@ export function AppShell() {
             Дневник
           </div>
           <nav className="app-nav" aria-label="Разделы">
-            {LINKS.map(({ to, label, icon: Icon }) => (
-              <NavLink key={to} to={to} end>
-                <Icon aria-hidden="true" />
-                <span>{label}</span>
-              </NavLink>
+            {LINKS.map(({ to, label, icon: Icon }, index) => (
+              <Fragment key={to}>
+                {/* On a phone the button sits in the middle of the tab bar. */}
+                {index === 2 && (
+                  <button type="button" className="nav-record" onClick={() => record.open()}>
+                    <ScanLine aria-hidden="true" />
+                    <span className="nav-record-label">Записать</span>
+                  </button>
+                )}
+                <NavLink to={to} end className={to === '/profile' ? 'nav-profile' : undefined}>
+                  <Icon aria-hidden="true" />
+                  <span>{label}</span>
+                </NavLink>
+              </Fragment>
             ))}
           </nav>
           <div className="rail-footer">
@@ -56,6 +74,7 @@ export function AppShell() {
         </PageReveal>
       </main>
       <MealSheetHost />
+      <RecordSheetHost />
     </div>
   )
 }

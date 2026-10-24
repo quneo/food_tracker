@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { ChevronDown, NotebookText, Plus, X } from 'lucide-react'
+import { ChevronDown, NotebookText, Plus, ScanLine, X } from 'lucide-react'
 import { mealsApi } from '@/api/endpoints'
 import { keys } from '@/api/keys'
 import { useUser } from '@/hooks/useAuth'
@@ -11,8 +11,8 @@ import { DateRangePicker } from '@/components/shared/DateRangePicker'
 import { BlockSkeleton, EmptyState, ErrorState } from '@/components/shared/States'
 import { MealCard } from '@/components/meals/MealCard'
 import { MacroLine } from '@/components/meals/MealBits'
-import { NewMealSheet } from '@/components/meals/NewMealSheet'
 import { useMealParam } from '@/components/meals/MealSheet'
+import { useRecordParam } from '@/components/record/RecordSheet'
 import { ProductsView } from '@/components/products/ProductsView'
 import { cn } from '@/lib/utils'
 import { addDays, dayLabel, num, rangeLabel, todayIn } from '@/lib/format'
@@ -31,7 +31,7 @@ export default function DiaryPage() {
   const today = todayIn(user.timezone)
   const { open } = useMealParam()
   const [params, setParams] = useSearchParams()
-  const [adding, setAdding] = useState(false)
+  const record = useRecordParam()
   const [addingProduct, setAddingProduct] = useState(false)
 
   const rawFrom = params.get('from') ?? ''
@@ -101,14 +101,21 @@ export default function DiaryPage() {
             )}
           </div>
         )}
-        <Button
-          onClick={() => (products ? setAddingProduct(true) : setAdding(true))}
-          className="max-sm:w-11 max-sm:px-0"
-          aria-label={products ? 'Добавить продукт' : 'Добавить запись'}
-        >
-          <Plus />
-          <span className="max-sm:sr-only">{products ? 'Добавить продукт' : 'Добавить'}</span>
-        </Button>
+        {products ? (
+          <Button
+            onClick={() => setAddingProduct(true)}
+            className="max-sm:w-11 max-sm:px-0"
+            aria-label="Добавить продукт"
+          >
+            <Plus />
+            <span className="max-sm:sr-only">Добавить продукт</span>
+          </Button>
+        ) : (
+          <Button onClick={() => record.open()} className="max-[899px]:hidden">
+            <ScanLine />
+            Записать
+          </Button>
+        )}
       </PageHeader>
 
       <div className="mb-4">
@@ -157,9 +164,16 @@ export default function DiaryPage() {
                   description={
                     from
                       ? 'Выберите другой период.'
-                      : 'Пришлите боту фото или описание еды, либо добавьте запись вручную.'
+                      : 'Сфотографируйте тарелку или опишите словами, ассистент посчитает.'
                   }
-                />
+                >
+                  {!from && (
+                    <Button onClick={() => record.open()}>
+                      <ScanLine />
+                      Записать
+                    </Button>
+                  )}
+                </EmptyState>
               )}
               {pages.map((page) => (
                 <PageDays key={page.end} page={page} today={today} onOpen={open} />
@@ -186,8 +200,6 @@ export default function DiaryPage() {
           )}
         </div>
       )}
-
-      <NewMealSheet open={adding} onOpenChange={setAdding} />
     </>
   )
 }

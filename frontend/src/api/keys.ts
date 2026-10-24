@@ -3,6 +3,8 @@ import type { QueryClient } from '@tanstack/react-query'
 export const keys = {
   authConfig: ['auth-config'] as const,
   today: ['today'] as const,
+  day: (day: string) => ['day', day] as const,
+  assistantJob: (id: number) => ['assistant-job', id] as const,
   meals: ['meals'] as const,
   meal: (id: number) => ['meal', id] as const,
   daily: ['daily'] as const,
@@ -28,7 +30,7 @@ function invalidate(client: QueryClient, list: readonly (readonly unknown[])[]) 
 
 /** Everything that shows meals or numbers made from them. */
 export const invalidateMeals = (client: QueryClient) =>
-  invalidate(client, [keys.today, keys.meals, ['meal'], keys.daily, keys.report])
+  invalidate(client, [keys.today, ['day'], keys.meals, ['meal'], keys.daily, keys.report])
 
 /** Everything that shows weight, measurements or progress photos. */
 export const invalidateBody = (client: QueryClient) =>
