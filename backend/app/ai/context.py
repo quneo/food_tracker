@@ -534,8 +534,13 @@ class Context:
             )
         ).all()
         times: dict[date, list[str]] = defaultdict(list)
+        # What was eaten, not only how much: the assistant then knows the person's food.
+        dishes: dict[date, list[tuple]] = defaultdict(list)
         for meal in meals:
-            times[meal.eaten_on].append(f"{to_local(meal.eaten_at, self.tz):%H:%M}")
+            local = to_local(meal.eaten_at, self.tz)
+            times[meal.eaten_on].append(f"{local:%H:%M}")
+            dishes[meal.eaten_on].append((local, meal.title[:60], meal.kcal))
+        named = days <= 14
         target = self.user.profile.kcal_target
         status = {"complete": "полный", "partial": "неполный", "empty": "нет записей"}
         lines = []
@@ -553,6 +558,14 @@ class Context:
                 f"Ж {n(row['fat'])} / У {n(row['carbs'])}, приемов {row['meals']}{span}, "
                 f"{status[row['status']]}"
             )
+            if named and day != self.today and dishes.get(day):
+                eaten_list = sorted(dishes[day], key=lambda dish: dish[0])
+                lines.append(
+                    "  ели: "
+                    + "; ".join(
+                        f"{when:%H:%M} {title} {n(kcal)}" for when, title, kcal in eaten_list
+                    )
+                )
         summary = report(self.db, self.user, start, self.today)
         averages = summary["averages"]
         extra = [

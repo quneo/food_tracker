@@ -11,7 +11,9 @@ from app.database import utcnow
 
 MAX_FACTS = 300
 ALL_UP_TO = 40  # fewer facts than this: the assistant sees all of them
-CORE = {"allergy", "health", "goal", "dislike"}  # always relevant
+# Always relevant: what is unsafe, what the person is after, and how they like to be
+# talked to.
+CORE = {"allergy", "health", "goal", "dislike", "preference"}
 WORD = re.compile(r"[a-zа-яё0-9]+", re.IGNORECASE)
 ENDINGS = re.compile(
     r"(ами|ями|ого|его|ому|ему|ыми|ими|ах|ях|ов|ев|ей|ой|ий|ый|ая|яя|ое|ее|ом|ем|ую|юю|"

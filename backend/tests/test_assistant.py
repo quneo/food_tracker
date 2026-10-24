@@ -1,6 +1,7 @@
 """Message -> job -> Codex (fake) -> validated actions -> records and outbox."""
 
 import asyncio
+import re
 
 import pytest
 from conftest import jpeg
@@ -431,7 +432,8 @@ def test_replacing_items_applies_at_once_and_can_be_put_back(person, runner, wor
     # The assistant learns that its change was undone, and sees what it showed.
     prompt = runner.calls[1]["prompt"]
     assert "(Пользователь нажал кнопку) Вернуть «Салат» как было" in prompt
-    assert "[карточка] 🍽 Салат" in prompt
+    # The icon depends on the meal type, which follows the time of day.
+    assert re.search(r"\[карточка\] \S+ Салат", prompt)
 
 
 def test_a_meal_from_the_site_never_reaches_telegram(person, runner, worker, sessions):

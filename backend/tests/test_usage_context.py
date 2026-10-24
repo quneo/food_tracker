@@ -1,7 +1,7 @@
 """Token usage in the profile; what the assistant sees about the person."""
 
 import asyncio
-from datetime import timedelta
+from datetime import date, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -91,6 +91,15 @@ def test_context_knows_targets_body_and_the_week(person, runner, worker):
         "/api/meals",
         json={"title": "Омлет", "items": [{"name": "Омлет", "kcal": 400, "protein": 30}]},
     )
+    today = date.fromisoformat(person.web.get("/api/today").json()["day"])
+    person.web.post(
+        "/api/meals",
+        json={
+            "title": "Гречка с котлетой",
+            "eaten_at": f"{today - timedelta(days=1)}T13:10",
+            "items": [{"name": "Гречка", "kcal": 520}],
+        },
+    )
     runner.answers.append(REPLY)
     person.say("что посоветуешь на ужин?")
     asyncio.run(worker.drain())
@@ -101,3 +110,5 @@ def test_context_knows_targets_body_and_the_week(person, runner, worker):
     assert "Расчет по Миффлину" in prompt
     assert "приходят черновиком" in prompt
     assert "## Статистика за 7 дн." in prompt
+    # Earlier days show what was eaten, not only the totals.
+    assert "  ели: 13:10 Гречка с котлетой 520" in prompt
