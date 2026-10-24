@@ -385,38 +385,85 @@ def test_adding_to_a_saved_meal_keeps_the_rest(person, runner, worker, sessions)
     assert person.web.get(f"/api/meals/{dinner['id']}").json()["kcal"] == 316
 
 
-def test_replacing_items_waits_for_yes_and_a_no_is_remembered(person, runner, worker, sessions):
+def test_replacing_items_applies_at_once_and_can_be_put_back(person, runner, worker, sessions):
+    """The person said what to change: no question, but one tap puts the meal back."""
+    person.web.put(
+        "/api/profile",
+        json={
+            "timezone": "Asia/Krasnoyarsk",
+            "kcal_target": 2000,
+            "protein_target": 120,
+            "fat_target": 70,
+            "carbs_target": 250,
+        },
+    )
     meal = person.web.post(
         "/api/meals",
         json={
             "title": "Салат",
             "items": [
-                {"name": "Овощи", "grams": 250, "kcal": 70},
-                {"name": "Масло", "grams": 5, "kcal": 45},
+                {"name": "Овощи", "grams": 250, "kcal": 70, "protein": 3, "carbs": 12},
+                {"name": "Масло", "grams": 5, "kcal": 45, "fat": 5},
             ],
         },
     ).json()
     veg, oil = (entry["id"] for entry in meal["items"])
-    chickpeas = item("Нут запеченный", 40, 66)
+    chickpeas = item("Нут запеченный", 40, 66, protein=4, fat=1, carbs=9)
     runner.answers.append(
         {"reply": "", "actions": [edit(meal["id"], add=[chickpeas], remove=[oil])]}
     )
     person.say("тут нет масла, есть нут")
     run_jobs(worker)
-    [question] = outbox(sessions)
-    text = question.payload["text"]
+    [card] = outbox(sessions)
+    text = card.payload["text"]
     assert "− Масло, 5 г — 45 ккал" in text and "+ Нут запеченный, ~40 г — 66 ккал" in text
-    assert "Итого: 115 → 136 ккал" in text
-    no = question.payload["buttons"][0][1]["data"]
-    assert person.web.get(f"/api/meals/{meal['id']}").json()["kcal"] == 115
+    # The day so far, macros included.
+    assert "За день: <b>136</b> из 2000 ккал" in text and "Б 7/120 · Ж 1/70 · У 21/250" in text
+    assert person.web.get(f"/api/meals/{meal['id']}").json()["kcal"] == 136
+    back = card.payload["buttons"][-1][0]
+    assert back["text"] == "↩️ Вернуть как было"
 
-    person.press(no)
+    assert person.press(back["data"])["toast"] == "Вернул как было"
+    assert person.web.get(f"/api/meals/{meal['id']}").json()["kcal"] == 115
     runner.answers.append({"reply": "Понял.", "actions": []})
     person.say("почему так?")
     run_jobs(worker)
-    # The assistant learns that its proposal was turned down, and sees what it showed.
+    # The assistant learns that its change was undone, and sees what it showed.
     prompt = runner.calls[1]["prompt"]
-    assert "(Пользователь нажал «Нет»)" in prompt and "[карточка] ❓ Изменить «Салат»" in prompt
+    assert "(Пользователь нажал кнопку) Вернуть «Салат» как было" in prompt
+    assert "[карточка] 🍽 Салат" in prompt
+
+
+def test_a_meal_from_the_site_never_reaches_telegram(person, runner, worker, sessions):
+    runner.answers.append(
+        {
+            "reply": "",
+            "actions": [{"kind": "create_meal", "meal": LUNCH, "use_photos": True}],
+        }
+    )
+    started = person.web.post(
+        "/api/assistant/meals",
+        data={"text": "съел половину", "mode": "label"},
+        files=[("photos", ("p.jpg", jpeg(), "image/jpeg"))],
+    )
+    assert started.status_code == 202 and started.json()["status"] == "queued"
+    run_jobs(worker)
+
+    prompt = runner.calls[0]["prompt"]
+    assert "# Task: a meal from the website" in prompt
+    assert "## Запись с сайта\nЧто на фото: этикетка" in prompt and "съел половину" in prompt
+    assert "## Сессия" not in prompt
+    job = person.web.get(f"/api/assistant/jobs/{started.json()['id']}").json()
+    assert job["status"] == "done"
+    [meal] = job["meals"]
+    assert meal["status"] == "draft" and len(meal["photos"]) == 1 and meal["kcal"] == 570
+    assert not outbox(sessions)  # the chat in Telegram stays as it was
+
+
+def test_the_site_form_needs_something_to_log(person):
+    empty = person.web.post("/api/assistant/meals", data={"text": " "})
+    assert empty.status_code == 400 and empty.json()["detail"].startswith("Добавьте фото")
+    assert person.web.get("/api/assistant/jobs/999").status_code == 404
 
 
 def test_a_meal_in_the_future_is_refused_plainly(person, runner, worker, sessions):

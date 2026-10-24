@@ -83,6 +83,7 @@ def worker(sessions, files, runner, monkeypatch):
     test_worker = jobs.Worker(sessions=sessions, storage=files, run=runner)
     monkeypatch.setattr(jobs, "worker", test_worker)
     monkeypatch.setattr("app.api.bot.worker", test_worker)
+    monkeypatch.setattr("app.api.assistant.worker", test_worker)
     return test_worker
 
 

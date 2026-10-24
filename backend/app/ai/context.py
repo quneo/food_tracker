@@ -65,8 +65,11 @@ class Context:
         batch: list[ChatMessage] | None = None,
         session: ChatSession | None = None,
         photo_notes: list[str] | None = None,
+        web_mode: str | None = None,
     ):
         self.review_days = review_days
+        # What the photos of a meal sent from the site's form show ("food" or "label").
+        self.web_mode = web_mode
         self.db = db
         self.user = user
         self.message = message
@@ -86,7 +89,7 @@ class Context:
             self.section_now(),
             self.section_profile(),
             self.section_today(),
-            self.section_drafts(),
+            "" if self.web_mode else self.section_drafts(),
             self.section_mentioned_days(),
             self.section_similar_meals(),
             self.section_frequent_foods(),
@@ -95,8 +98,8 @@ class Context:
             self.section_stats(),
             self.section_reminders(),
             self.section_memory(),
-            self.section_conversation(),
-            self.section_message(),
+            "" if self.web_mode else self.section_conversation(),
+            self.section_web() if self.web_mode else self.section_message(),
         ]
         return "\n\n".join(part for part in parts if part)
 
@@ -609,6 +612,14 @@ class Context:
             f"\n<<<\n{body}\n>>>"
         )
 
+    def section_web(self) -> str:
+        shown = "этикетка" if self.web_mode == "label" else "еда"
+        lines = [f"Что на фото: {shown}"] if self.photo_notes else []
+        lines += [f"- {note}" for note in self.photo_notes]
+        text = self.text.strip() or "(без текста)"
+        hint = ("\n" + "\n".join(lines)) if lines else ""
+        return f"## Запись с сайта{hint}\n<<<\n{text}\n>>>"
+
 
 def build(
     db: Session,
@@ -618,5 +629,6 @@ def build(
     batch: list[ChatMessage] | None = None,
     session: ChatSession | None = None,
     photo_notes: list[str] | None = None,
+    web_mode: str | None = None,
 ) -> str:
-    return Context(db, user, message, review_days, batch, session, photo_notes).build()
+    return Context(db, user, message, review_days, batch, session, photo_notes, web_mode).build()

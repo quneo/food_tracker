@@ -12,6 +12,7 @@ from app.ai.jobs import worker
 from app.api import (
     admin,
     analytics,
+    assistant,
     auth,
     bot,
     meals,
@@ -47,6 +48,7 @@ for router in (
     auth.router,
     profile.router,
     meals.router,
+    assistant.router,
     products.router,
     progress.router,
     media.router,

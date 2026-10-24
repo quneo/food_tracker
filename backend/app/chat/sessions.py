@@ -29,7 +29,7 @@ REVIEW = "🧾 Разбор"
 MORE = "⚙️ Еще"
 KEYS = {NEW, END, TODAY, WEIGHT, MEASURE, PROGRESS, REVIEW, MORE}
 # Raise when the keyboard changes: everyone gets it again with a short note.
-KEYBOARD_VERSION = 2
+KEYBOARD_VERSION = 3
 # The first few sessions explain themselves; later ones just say what happened.
 INTRO_SESSIONS = 3
 
@@ -189,25 +189,33 @@ def summary(db: Session, user: User, session: ChatSession) -> str:
     return "\n".join(lines)
 
 
-def started_view(db: Session, user: User, previous: str | None = None) -> dict:
+def quiet_time() -> str:
+    """How long a session waits: "час", "2 часа", "90 минут"."""
     minutes = get_settings().session_idle_minutes
+    if minutes % 60:
+        return f"{minutes} минут"
+    hours = minutes // 60
+    return "час" if hours == 1 else f"{hours} часа"
+
+
+def started_view(db: Session, user: User, previous: str | None = None) -> dict:
+    quiet = quiet_time()
     head = f"⏹ Прошлая сессия закрыта\n{previous}\n\n" if previous else ""
     if intro(db, user):
         body = (
             "🟢 <b>Сессия началась</b>\n"
             "Пишите и присылайте фото, можно несколькими сообщениями подряд: ассистент видит "
             "всё, что пришло в этой сессии.\n"
-            f"<i>Закроется сама через {minutes} минут тишины.</i>"
+            f"<i>Закроется сама через {quiet} тишины.</i>"
         )
     else:
-        body = f"🟢 <b>Сессия началась</b>\n<i>Закроется через {minutes} минут тишины</i>"
+        body = f"🟢 <b>Сессия началась</b>\n<i>Закроется через {quiet} тишины</i>"
     return keyboard_view(head + body, True)
 
 
 def ended_view(db: Session, user: User, text: str, reason: str) -> dict:
-    minutes = get_settings().session_idle_minutes
     title = (
-        f"⚪️ <b>Сессия закрыта</b>: {minutes} минут тишины"
+        f"⚪️ <b>Сессия закрыта</b>: {quiet_time()} тишины"
         if reason == "idle"
         else "⏹ <b>Сессия закрыта</b>"
     )

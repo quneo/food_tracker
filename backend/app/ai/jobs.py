@@ -178,12 +178,19 @@ class Worker:
                         f"{_when(quoted[p.message_id], user)}"
                     ),
                 )
-            review = job.kind == "review"
+            review, web = job.kind == "review", job.kind == "web"
             prompt = prompts.assemble(
                 context.build(
-                    db, user, batch[-1], job.days if review else None, batch, session, notes
+                    db,
+                    user,
+                    batch[-1],
+                    job.days if review else None,
+                    batch,
+                    session,
+                    notes,
+                    (job.result or {}).get("mode", "food") if web else None,
                 ),
-                "review" if review else "turn",
+                "review" if review else "web" if web else "turn",
             )
             db.commit()  # memory facts' last_used_at, the job's last message
             return prompt, pictures
@@ -201,9 +208,21 @@ class Worker:
                 self._fail(db, job, user, "bad_output", str(error)[:300], transient=True)
                 return
             photos = photos_of(db, [message.id for message in batch])
-            state = db.get(ChatState, user.id)
+            web = job.kind == "web"
+            # A meal sent from the site has nothing to do with the chat's state.
+            state = None if web else db.get(ChatState, user.id)
             focus = state.focus_meal_id if state else None
             outcome = Executor(db, user, list(photos), answer.model, focus).run(result)
+            if web:
+                # The site asks for the outcome itself; nothing goes to Telegram.
+                job.result = {
+                    **(job.result or {}),
+                    "reply": result.reply.strip()[:1500],
+                    "notes": outcome.notes,
+                    "meals": outcome.meals,
+                }
+                self._done(db, job, answer)
+                return
 
             reply = reply_html(result.reply[: 3600 if job.kind == "review" else 3000])
             notes = "\n".join(html.escape(note) for note in outcome.notes)
@@ -254,16 +273,19 @@ class Worker:
                 state.focus_meal_id = None
                 if state.mode == "progress" and photos:
                     state.mode = None
-            job.status = "done"
-            job.finished_at = utcnow()
-            job.model = answer.model
             job.result = result.model_dump()
-            job.duration_ms = answer.duration_ms
-            job.input_tokens = answer.input_tokens
-            job.cached_input_tokens = answer.cached_input_tokens
-            job.output_tokens = answer.output_tokens
-            job.reasoning_output_tokens = answer.reasoning_output_tokens
-            db.commit()
+            self._done(db, job, answer)
+
+    def _done(self, db, job: AiJob, answer: runner.RunnerResult):
+        job.status = "done"
+        job.finished_at = utcnow()
+        job.model = answer.model
+        job.duration_ms = answer.duration_ms
+        job.input_tokens = answer.input_tokens
+        job.cached_input_tokens = answer.cached_input_tokens
+        job.output_tokens = answer.output_tokens
+        job.reasoning_output_tokens = answer.reasoning_output_tokens
+        db.commit()
 
     def fail(self, job_id: int, error: runner.RunnerError):
         with self.sessions() as db:
@@ -280,6 +302,12 @@ class Worker:
             log.warning("job %s failed: %s", job.id, detail)
             job.status = "failed"
             job.finished_at = utcnow()
+            if job.kind == "web":
+                # The site shows the error itself.
+                job.result = {**(job.result or {}), "error": ERRORS.get(code, DEFAULT_ERROR)}
+                db.commit()
+                self.wake()
+                return
             # Not answered, but not asked again either: the person can repeat it.
             message = db.get(ChatMessage, job.message_id)
             session = db.get(ChatSession, message.session_id) if message.session_id else None

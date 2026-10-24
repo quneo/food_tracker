@@ -163,11 +163,11 @@ def test_quiet_sessions_close_by_themselves(person, sessions):
     person.start_session()
     with sessions() as db:
         session = db.scalar(select(ChatSession))
-        session.last_activity_at = utcnow() - timedelta(minutes=21)
+        session.last_activity_at = utcnow() - timedelta(minutes=61)
         db.commit()
         assert chat_sessions.close_idle(db) == 1
         [message] = db.scalars(select(OutboxMessage)).all()
-        assert "20 минут тишины" in message.payload["text"]
+        assert "час тишины" in message.payload["text"]
         assert "Ничего не записали" in message.payload["text"]
         assert message.payload["keyboard"][0][0] == chat_sessions.NEW
     assert "Сессия не начата" in person.say("привет").json()["view"]["text"]

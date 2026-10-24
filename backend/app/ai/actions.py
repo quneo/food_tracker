@@ -2,9 +2,8 @@
 
 The model never touches the database. Every action is validated here: ids must belong to
 the person and be of the right kind, numbers must be plausible. New records are written
-at once (with an undo button). Additions to a recorded meal apply at once too, with a
-button that puts the meal back; other edits and deletions of saved records the person did
-not explicitly point at wait for a "yes"."""
+at once (with an undo button). Edits of a recorded meal apply at once too, with a button
+that puts the meal back; deletions of saved records wait for a "yes"."""
 
 import logging
 from dataclasses import dataclass, field
@@ -74,6 +73,7 @@ class Outcome:
     notes: list[str] = field(default_factory=list)
     cards: list[dict] = field(default_factory=list)
     created: list[list] = field(default_factory=list)  # [entity, id] the undo button removes
+    meals: list[int] = field(default_factory=list)  # meals created or changed, for the site
 
 
 class Executor:
@@ -131,8 +131,10 @@ class Executor:
 
     def card(self, meal: Meal, changes: list[str] | None = None, restore: int | None = None):
         card = views.meal_view(
-            meal, self.tz_name, self.day_total(), self.user.profile.kcal_target, changes=changes
+            meal, self.tz_name, self.day_total(), nutrition.targets(self.user), changes=changes
         )
+        if meal.id not in self.out.meals:
+            self.out.meals.append(meal.id)
         if restore:
             back = views.button("↩️ Вернуть как было", f"u:{restore}")
             card["buttons"] = card["buttons"] + [[back]]
@@ -210,21 +212,12 @@ class Executor:
         self.card(meal)
 
     def edit_meal(self, action: EditMeal):
-        """Only what was named changes. A draft, the meal the person pressed "Fix" on and
-        plain additions change at once; anything else waits for a yes."""
+        """Only what was named changes, at once: the person already said what to do. A
+        recorded meal gets a button that puts it back as it was."""
         meal = self.owned(Meal, action.meal_id, "прием пищи")
         plan = meal_edits.plan(meal, action, self.product, self.tz_name)
         if not plan.lines and not plan.title and not plan.comment:
             raise DomainError("в записи нечего менять")
-        direct = meal.status == "draft" or meal.id == self.focus_meal_id
-        if not direct and not plan.only_added:
-            payload = {
-                "meal_id": meal.id,
-                "before": meal_edits.fingerprint(meal),
-                "plan": plan.dump(),
-            }
-            self.ask("edit_meal", payload, meal_edits.summary(meal, plan))
-            return
         restore = None
         if meal.status != "draft":
             # A recorded meal: one tap puts it back as it was.

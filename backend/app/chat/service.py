@@ -60,7 +60,7 @@ HELP = (
     "<b>Как это работает</b>\n\n"
     "🟢 <b>Сессия</b> — разговор с ассистентом. Нажмите «Новая сессия» и пишите как в "
     "обычном чате: текст, фото, несколько сообщений подряд. Ассистент видит всё, что пришло "
-    "в сессии, считает КБЖУ, отвечает на вопросы. Через 20 минут тишины сессия закроется "
+    "в сессии, считает КБЖУ, отвечает на вопросы. Через {quiet} тишины сессия закроется "
     "сама.\n\n"
     "🍽 <b>Еда.</b> В сессии пришлите фото тарелки или напишите, что съели: "
     "<i>«овсянка 60 г на молоке и банан»</i>. Придет черновик: «Сохранить» или напишите, что "
@@ -73,6 +73,10 @@ HELP = (
     "Вес можно прислать и просто числом: <i>«82,4»</i>, замеры строкой: "
     "<i>«талия 82, бедра 98»</i>."
 )
+
+
+def help_text() -> str:
+    return HELP.replace("{quiet}", sessions.quiet_time())
 
 
 def state_of(db: Session, user: User) -> ChatState:
@@ -105,10 +109,11 @@ def _announce(db: Session, user: User):
         user,
         **sessions.keyboard_view(
             "✨ <b>Бот обновился</b>\n"
-            "• Правки еды точечные: «добавь к ужину сливы» меняет только сливы, остальное "
-            "остается как было\n"
-            "• Карточки компактнее, детали расчета свернуты под «Оценка»\n"
-            "• Пока ассистент думает, на вашем сообщении стоит 👀",
+            f"• Сессия живет дольше: закрывается после {sessions.quiet_time()} тишины\n"
+            "• Правки еды применяются сразу, без подтверждений; если что-то не так — "
+            "«↩️ Вернуть как было»\n"
+            "• После каждой записи видно, сколько белков, жиров и углеводов набралось за день\n"
+            "• Еду можно записывать и на сайте: кнопка «Записать»",
             sessions.current(db, user) is not None,
         ),
     )
@@ -147,13 +152,13 @@ def start(db: Session, info: dict, payload: str | None) -> dict:
         if created
         else "С возвращением! 👋\n\n"
     )
-    result = _with_keyboard(db, user, greeting + HELP)
+    result = _with_keyboard(db, user, greeting + help_text())
     db.commit()
     return result
 
 
 def help_view(db: Session, user: User) -> dict:
-    result = _with_keyboard(db, user, HELP)
+    result = _with_keyboard(db, user, help_text())
     db.commit()
     return result
 
@@ -169,7 +174,7 @@ def link(db: Session, info: dict, code: str | None) -> dict:
         text = users.link_telegram(db, code, info)
     except DomainError as error:
         return view(escape(error.message))
-    return sessions.keyboard_view(f"{text}\n\n{HELP}", False)
+    return sessions.keyboard_view(f"{text}\n\n{help_text()}", False)
 
 
 def today(db: Session, user: User) -> dict:
@@ -503,7 +508,7 @@ def _meal_view(
         meal,
         user.profile.timezone,
         total,
-        user.profile.kcal_target,
+        nutrition.targets(user),
         deleting=deleting,
         changes=changes,
     )

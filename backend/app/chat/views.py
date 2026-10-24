@@ -72,23 +72,33 @@ def grams(item) -> str:
     return f"~{n(item.grams)} г" if item.grams_source == "estimated" else f"{n(item.grams)} г"
 
 
-def day_line(eaten: float, target: int | None, label: str = "За день") -> list[str]:
-    """ "За день: 1748 из 2300 ккал" and a bar under it."""
-    if not target:
-        return [f"{label}: {n(eaten)} ккал"]
-    left = target - eaten
-    tail = f"осталось {n(left)}" if left >= 0 else f"больше нормы на {n(-left)}"
-    return [
-        f"{label}: <b>{n(eaten)}</b> из {target} ккал",
-        f"{progress_bar(eaten / target)} {round(eaten / target * 100)}% · {tail}",
-    ]
+def day_line(eaten: dict, targets: dict | None, label: str = "За день") -> list[str]:
+    """ "За день: 1748 из 2300 ккал", a bar under it, then protein, fat and carbs."""
+    targets = targets or {}
+    kcal, target = eaten["kcal"], targets.get("kcal")
+    if target:
+        left = target - kcal
+        tail = f"осталось {n(left)}" if left >= 0 else f"больше нормы на {n(-left)}"
+        lines = [
+            f"{label}: <b>{n(kcal)}</b> из {target} ккал",
+            f"{progress_bar(kcal / target)} {round(kcal / target * 100)}% · {tail}",
+        ]
+    else:
+        lines = [f"{label}: <b>{n(kcal)}</b> ккал"]
+
+    def macro(name: str, key: str) -> str:
+        goal = targets.get(key)
+        return f"{name} {n(eaten[key])}" + (f"/{goal}" if goal else "")
+
+    lines.append(" · ".join([macro("Б", "protein"), macro("Ж", "fat"), macro("У", "carbs")]))
+    return lines
 
 
 def meal_text(
     meal: Meal,
     tz_name: str,
     day_total: dict | None = None,
-    target=None,
+    targets: dict | None = None,
     changes: list[str] | None = None,
 ) -> str:
     """The meal card: the numbers first, the items, what changed, the remark; how it was
@@ -134,9 +144,12 @@ def meal_text(
     if details:
         lines += ["", "<blockquote expandable>" + "\n".join(details) + "</blockquote>"]
     if day_total is not None:
+        # A draft is not counted yet: show the day as it will be once it is saved.
         draft = meal.status == "draft"
-        total = day_total["kcal"] + (meal.kcal if draft else 0)
-        lines += ["", *day_line(total, target, "С этим за день" if draft else "За день")]
+        total = {
+            key: value + (getattr(meal, key) if draft else 0) for key, value in day_total.items()
+        }
+        lines += ["", *day_line(total, targets, "С этим за день" if draft else "За день")]
     return "\n".join(lines)
 
 
@@ -161,9 +174,9 @@ def meal_buttons(meal: Meal, deleting: bool = False) -> list:
 
 
 def meal_view(
-    meal: Meal, tz_name: str, day_total=None, target=None, deleting=False, changes=None
+    meal: Meal, tz_name: str, day_total=None, targets=None, deleting=False, changes=None
 ) -> dict:
-    return view(meal_text(meal, tz_name, day_total, target, changes), meal_buttons(meal, deleting))
+    return view(meal_text(meal, tz_name, day_total, targets, changes), meal_buttons(meal, deleting))
 
 
 def confirm_view(action_id: int, summary: str, danger: bool = False) -> dict:
@@ -189,15 +202,9 @@ def today_view(summary: dict, today: date, weight=None, change=None) -> dict:
     lines = [
         f"📊 <b>{day_name(today, today).capitalize()}, {today.day} {MONTHS[today.month - 1]}</b>",
         "",
-        *day_line(totals["kcal"], targets["kcal"], "Съедено"),
+        *day_line(totals, targets, "Съедено"),
+        "",
     ]
-
-    def macro(label, key):
-        goal = targets[key]
-        return f"{label} {n(totals[key])}" + (f"/{goal}" if goal else "")
-
-    lines.append(" · ".join([macro("Б", "protein"), macro("Ж", "fat"), macro("У", "carbs")]))
-    lines.append("")
     meals = summary["meals"]
     if not meals:
         lines.append("Пока ничего не записано. Начните сессию и пришлите фото еды.")

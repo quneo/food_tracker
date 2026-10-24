@@ -14,8 +14,9 @@ def instructions() -> str:
 
 
 def assemble(context: str, mode: str = "turn") -> str:
-    """mode "review" adds the instructions for a review of the recent days."""
+    """mode "review" adds the instructions for a review of the recent days, "web" those
+    for a meal sent from the site's form."""
     parts = [instructions().strip()]
-    if mode == "review":
-        parts.append(template("review").strip())
+    if mode in ("review", "web"):
+        parts.append(template(mode).strip())
     return "\n\n".join(parts) + f"\n\n# Context\n\n{context}\n"
