@@ -3,10 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#f8f7f2" />
+    <!-- The phone's status bar takes the color of the wallpaper's top edge. -->
+    <meta name="theme-color" content="#eef2e6" />
     <meta name="robots" content="noindex, nofollow" />
     <meta name="referrer" content="same-origin" />
-    <link rel="icon" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="Дневник" />
     <title>Дневник</title>
     <script>
       // The theme is applied before the first paint: saved choice, else the system's.
@@ -20,7 +24,7 @@
           (theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
         document.documentElement.classList.toggle('dark', dark)
         if (dark)
-          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d1210')
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d1613')
       })()
     </script>
   </head>

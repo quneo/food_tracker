@@ -212,7 +212,10 @@
   inset: 0;
   z-index: -1;
   pointer-events: none;
+  /* The top edge is plain --background, the color of the phone's status bar in the
+     installed app, so the bar and the page meet without a seam. */
   background:
+    linear-gradient(var(--background), transparent 96px),
     radial-gradient(70% 60% at 0% 0%, var(--wall-1), transparent 70%),
     radial-gradient(70% 60% at 100% 0%, var(--wall-2), transparent 70%),
     radial-gradient(70% 60% at 0% 100%, var(--wall-3), transparent 70%),
@@ -223,8 +226,14 @@
   position: absolute;
   inset: 0;
   background: var(--pattern);
-  -webkit-mask: url('./assets/pattern.webp') repeat 0 0 / 380px 380px;
-  mask: url('./assets/pattern.webp') repeat 0 0 / 380px 380px;
+  -webkit-mask:
+    url('./assets/pattern.webp') repeat 0 0 / 380px 380px,
+    linear-gradient(transparent, #000 72px);
+  -webkit-mask-composite: source-in;
+  mask:
+    url('./assets/pattern.webp') repeat 0 0 / 380px 380px,
+    linear-gradient(transparent, #000 72px);
+  mask-composite: intersect;
 }
 
 /* Frosted sheets over the wallpaper. */
@@ -402,7 +411,7 @@
   font-weight: 600;
   letter-spacing: -0.01em;
 }
-.app-brand svg {
+.app-brand img {
   width: 34px;
   height: 34px;
   flex: none;

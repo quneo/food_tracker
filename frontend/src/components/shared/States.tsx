@@ -11,12 +11,12 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { LeafMark } from './LeafMark'
+import { AppMark } from './AppMark'
 
 export function SplashScreen() {
   return (
     <main className="splash" aria-busy="true" aria-label="Загрузка">
-      <LeafMark className="size-12 animate-pulse" />
+      <AppMark className="size-12 animate-pulse" />
     </main>
   )
 }

@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { LeafMark } from '@/components/shared/LeafMark'
+import { AppMark } from '@/components/shared/AppMark'
 import breakfast from '@/assets/breakfast.webp'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
 import type { LoginRequest, TelegramWidgetUser, User } from '@/types'
@@ -68,7 +68,7 @@ export default function LoginPage() {
     <div className="mx-auto flex min-h-dvh max-w-[1100px] flex-col px-4 sm:px-7">
       <header className="flex h-[72px] items-center justify-between">
         <span className="flex items-center gap-2.5 font-serif text-[21px] font-semibold">
-          <LeafMark />
+          <AppMark />
           Дневник
         </span>
         <ThemeToggle />

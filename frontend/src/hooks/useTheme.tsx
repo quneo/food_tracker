@@ -4,7 +4,8 @@ export type ThemePreference = 'light' | 'dark' | 'system'
 type Theme = 'light' | 'dark'
 
 const KEY = 'food-theme'
-const COLORS: Record<Theme, string> = { light: '#f8f7f2', dark: '#0d1210' }
+// The status bar of an installed app: the wallpaper's top edge (--background).
+const COLORS: Record<Theme, string> = { light: '#eef2e6', dark: '#0d1613' }
 const ThemeContext = createContext<{
   preference: ThemePreference
   resolvedTheme: Theme

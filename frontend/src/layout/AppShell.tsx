@@ -11,7 +11,7 @@ import {
 import { useUser } from '@/hooks/useAuth'
 import { PageReveal } from '@/components/shared/PageReveal'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
-import { LeafMark } from '@/components/shared/LeafMark'
+import { AppMark } from '@/components/shared/AppMark'
 import { MealSheetHost } from '@/components/meals/MealSheet'
 import { RecordSheetHost, useRecordParam } from '@/components/record/RecordSheet'
 
@@ -42,7 +42,7 @@ export function AppShell() {
       <aside className="app-rail">
         <div className="rail-panel glass">
           <div className="app-brand">
-            <LeafMark />
+            <AppMark />
             Дневник
           </div>
           <nav className="app-nav" aria-label="Разделы">
