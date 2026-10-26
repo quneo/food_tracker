@@ -173,7 +173,7 @@ def test_output_schema_is_strict():
 
     walk(schema)
     kinds = schema["properties"]["actions"]["items"]["anyOf"]
-    assert len(kinds) == 16
+    assert len(kinds) == 17
 
 
 def test_measurement_edit_keeps_its_id(person):

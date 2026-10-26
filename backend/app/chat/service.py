@@ -20,6 +20,7 @@ from app.database import utcnow
 from app.media import service as media
 from app.media.models import Media
 from app.media.storage import Storage
+from app.notes import service as notes
 from app.nutrition import service as nutrition
 from app.nutrition.models import Meal
 from app.progress import daily
@@ -34,6 +35,13 @@ from app.users.models import User
 PROGRESS_MODE = timedelta(minutes=10)
 AWAITING = timedelta(minutes=10)
 PROGRESS_WORDS = re.compile(r"^\s*(прогресс|фото тела|фото прогресса|моя форма)\b", re.I)
+# "заметка на обед: 130 грудка, 150 рис" — grams for later, saved without the assistant.
+NOTE_TEXT = re.compile(
+    r"^\s*(?:📝\s*)?заметк[аиу]\b\s*"
+    r"(?:(?:на|к|для)\s+(?P<meal>завтрак|обед|ужин|перекус)\w*)?\s*[:\-—,.]?\s*(?P<text>.+)$",
+    re.I | re.S,
+)
+NOTE_MEALS = {"завтрак": "breakfast", "обед": "lunch", "ужин": "dinner", "перекус": "snack"}
 WEIGHT = re.compile(
     r"^\s*(?P<word>вес|взвесил(?:ся|ась)?|weight)?\s*[:=-]?\s*"
     r"(?P<value>\d{2,3}(?:[.,]\d{1,2})?)\s*(?P<unit>кг|kg)?\.?\s*$",
@@ -69,6 +77,7 @@ HELP = (
     "⚖️ <b>Вес</b> и 📏 <b>Замеры</b> — запишу числа сразу\n"
     "📸 <b>Прогресс</b> — фото тела в альбом\n"
     "📊 <b>Сегодня</b> — итоги дня\n"
+    "📝 <b>Заметка</b> — взвесили еду заранее: граммы подождут нужного приема пищи\n"
     "🧾 <b>Разбор</b> — ассистент разберет рацион (откроет сессию)\n\n"
     "Вес можно прислать и просто числом: <i>«82,4»</i>, замеры строкой: "
     "<i>«талия 82, бедра 98»</i>."
@@ -109,11 +118,11 @@ def _announce(db: Session, user: User):
         user,
         **sessions.keyboard_view(
             "✨ <b>Бот обновился</b>\n"
-            f"• Сессия живет дольше: закрывается после {sessions.quiet_time()} тишины\n"
-            "• Правки еды применяются сразу, без подтверждений; если что-то не так — "
-            "«↩️ Вернуть как было»\n"
-            "• После каждой записи видно, сколько белков, жиров и углеводов набралось за день\n"
-            "• Еду можно записывать и на сайте: кнопка «Записать»",
+            "• 📝 <b>Заметки</b>: взвесили еду заранее — нажмите «📝 Заметка» и пришлите "
+            "граммы. Выберите, к какому приему: заметка всплывет к нему, а в сессии ассистент "
+            "сам учтет эти граммы. Можно и одной строкой: <i>«заметка на обед: 130 грудка, "
+            "150 рис»</i>\n"
+            "• На сайте заметки — на главной и в «Записать»",
             sessions.current(db, user) is not None,
         ),
     )
@@ -181,7 +190,55 @@ def today(db: Session, user: User) -> dict:
     summary = nutrition.day_summary(db, user)
     weight = progress.latest_weight(db, user.id)
     change = progress.weight_change(db, user, 7)
-    return views.today_view(summary, summary["day"], weight, change)
+    result = views.today_view(summary, summary["day"], weight, change)
+    waiting = notes.active(db, user.id)
+    if waiting:
+        tz = zone(user.profile.timezone)
+        lines = "\n".join(views.note_line(note, tz) for note in waiting)
+        result["text"] += f"\n\n<b>Ждут учета</b>\n{lines}"
+    return result
+
+
+# Weigh notes
+
+
+def ask_note(db: Session, user: User) -> dict:
+    """The note key and /note without text: the next message becomes a note."""
+    state = state_of(db, user)
+    state.awaiting, state.awaiting_until = "note", utcnow() + AWAITING
+    waiting = notes.active(db, user.id)
+    db.commit()
+    tz = zone(user.profile.timezone)
+    listed = (
+        "\n\n<b>Уже ждут</b>\n" + "\n".join(views.note_line(note, tz) for note in waiting)
+        if waiting
+        else ""
+    )
+    return view(
+        "📝 Пришлите, что взвесили, по строке на продукт: <i>130 грудка, 150 рис басмати</i>. "
+        "К какому приему — выберете кнопкой. Можно сразу: <i>«на обед: …»</i>." + listed,
+        [[views.button("✖️ Отмена", "aw:x")]],
+    )
+
+
+def save_note(db: Session, user: User, text: str) -> dict:
+    """A note from the bot; "на обед: …" in front picks the meal, else it is for soon."""
+    match = NOTE_TEXT.match(text) or re.match(
+        r"^\s*(?:(?:на|к|для)\s+(?P<meal>завтрак|обед|ужин|перекус)\w*)?\s*[:\-—,.]?\s*"
+        r"(?P<text>.+)$",
+        text,
+        re.I | re.S,
+    )
+    meal = NOTE_MEALS.get((match["meal"] or "").lower()) if match else None
+    note = notes.create(db, user, match["text"] if match else text, meal, "bot")
+    db.commit()
+    return views.note_view(note, user.profile.timezone, "Заметка сохранена")
+
+
+def note_command(db: Session, user: User, text: str | None) -> dict:
+    """/note [text]."""
+    _announce(db, user)
+    return save_note(db, user, text) if text and text.strip() else ask_note(db, user)
 
 
 def new_session(db: Session, user: User) -> dict:
@@ -280,6 +337,8 @@ def keyboard_action(db: Session, user: User, label: str) -> dict:
         return progress_mode(db, user)
     if label == sessions.REVIEW:
         return review_menu()
+    if label == sessions.NOTE:
+        return ask_note(db, user)
     return more_view()
 
 
@@ -459,6 +518,10 @@ def receive(
     if saved and (armed or PROGRESS_WORDS.match(text)):
         message.session_id = None
         return _save_progress(db, user, saved, text, None)
+    # Grams for later never go to the assistant as a meal.
+    if not saved and text and (awaiting == "note" or NOTE_TEXT.match(text)):
+        message.session_id = None
+        return {"view": save_note(db, user, text), "job_id": None}
     if not saved:
         weight = parse_weight(text, loose=awaiting == "weight")
         values = parse_measurements(text) if not weight or awaiting == "measure" else None
@@ -604,6 +667,8 @@ def _press(db: Session, user: User, parts: list[str], message_id: int | None) ->
         db.commit()
         result["view"] = view(text)
         return result
+    if head == "n":
+        return _press_note(db, user, parts, result)
     if head == "rv":
         days = int(parts[1])
         job, started = start_review(db, user, days)
@@ -749,6 +814,41 @@ def _press_session(db: Session, user: User, parts: list[str], result: dict) -> d
     result["job_id"] = job.id
     result["delete"] = True
     result["react_to"] = message.telegram_message_id
+    return result
+
+
+def _press_note(db: Session, user: User, parts: list[str], result: dict) -> dict:
+    """n:t:<id>:<code> moves a note to another meal, n:x:<id> drops it, n:go:<id> asks
+    the assistant to log the meal from it now (in a session)."""
+    note = notes.usable(db, int(parts[2]), user.id)
+    if parts[1] == "t":
+        notes.place(note, {**views.TYPE_CODES, "x": None}[parts[3]], user)
+        db.commit()
+        result["view"] = views.note_view(note, user.profile.timezone)
+        return result
+    if parts[1] == "x":
+        note.status = "deleted"
+        db.commit()
+        result["view"] = view(f"🗑 Заметка удалена\n<s>{escape(note.text)}</s>")
+        return result
+    if get_settings().ai_runner == "off":
+        raise DomainError(ERRORS["off"])
+    session, started = sessions.ensure(db, user)
+    sessions.touch(session)
+    message = ChatMessage(
+        user_id=user.id,
+        role="user",
+        text=f"Запиши по заметке [note {note.id}]:\n{note.text}",
+        session_id=session.id,
+    )
+    db.add(message)
+    db.flush()
+    job = queue_turn(db, user, message)
+    job.not_before = utcnow()
+    db.commit()
+    result["view"] = view(f"▶️ Считаю по заметке\n{escape(note.text)}")
+    result["message"] = sessions.started_view(db, user) if started else None
+    result["job_id"] = job.id
     return result
 
 

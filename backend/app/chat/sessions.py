@@ -16,7 +16,9 @@ from app.chat import outbox, views
 from app.chat.models import ChatMessage, ChatSession
 from app.chat.outbox import view
 from app.config import get_settings
+from app.core.timeutil import zone
 from app.database import utcnow
+from app.notes import service as notes
 from app.users.models import User
 
 NEW = "🟢 Новая сессия"
@@ -27,9 +29,10 @@ MEASURE = "📏 Замеры"
 PROGRESS = "📸 Прогресс"
 REVIEW = "🧾 Разбор"
 MORE = "⚙️ Еще"
-KEYS = {NEW, END, TODAY, WEIGHT, MEASURE, PROGRESS, REVIEW, MORE}
+NOTE = "📝 Заметка"
+KEYS = {NEW, END, TODAY, WEIGHT, MEASURE, PROGRESS, REVIEW, MORE, NOTE}
 # Raise when the keyboard changes: everyone gets it again with a short note.
-KEYBOARD_VERSION = 3
+KEYBOARD_VERSION = 4
 # The first few sessions explain themselves; later ones just say what happened.
 INTRO_SESSIONS = 3
 
@@ -38,7 +41,7 @@ def keyboard(active: bool) -> list[list[str]]:
     return [
         [END if active else NEW, TODAY],
         [WEIGHT, MEASURE, PROGRESS],
-        [REVIEW, MORE],
+        [NOTE, REVIEW, MORE],
     ]
 
 
@@ -210,6 +213,12 @@ def started_view(db: Session, user: User, previous: str | None = None) -> dict:
         )
     else:
         body = f"🟢 <b>Сессия началась</b>\n<i>Закроется через {quiet} тишины</i>"
+    # Food weighed in advance whose meal has come: the session is where it gets logged.
+    tz = zone(user.profile.timezone)
+    due = [note for note in notes.active(db, user.id) if notes.is_due(note)]
+    if due:
+        body += "\n\n" + "\n".join(views.note_line(note, tz) for note in due)
+        body += "\n<i>Учесть: «по заметке» или фото еды.</i>"
     return keyboard_view(head + body, True)
 
 

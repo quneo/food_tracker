@@ -16,6 +16,7 @@ import { Sparkline } from '@/components/home/Sparkline'
 import { WeekBars } from '@/components/home/WeekBars'
 import { WeekStrip, weekStart } from '@/components/home/WeekStrip'
 import { MealRow } from '@/components/meals/MealRow'
+import { NotesCard } from '@/components/notes/NotesCard'
 import { useMealParam } from '@/components/meals/MealSheet'
 import { useRecordParam } from '@/components/record/RecordSheet'
 import { WeightSheet, weightChange } from '@/components/progress/WeightEditor'
@@ -110,6 +111,7 @@ export default function HomePage() {
           ) : (
             <DayHero summary={summary.data} isToday={isToday} />
           )}
+          {isToday && <NotesCard />}
           {summary.data && (
             <CoachNote meals={summary.data.meals} onOpen={open} className="min-[1180px]:hidden" />
           )}

@@ -9,6 +9,7 @@ from app.chat.models import (
     PendingAction,
 )
 from app.media.models import Media, PendingDeletion
+from app.notes.models import WeighNote
 from app.nutrition.models import DayMark, Meal, MealItem, Product
 from app.progress.models import Measurement, ProgressEntry, ProgressPhoto, WeightEntry
 from app.reminders.models import Reminder
@@ -37,5 +38,6 @@ __all__ = [
     "Reminder",
     "User",
     "WebSession",
+    "WeighNote",
     "WeightEntry",
 ]

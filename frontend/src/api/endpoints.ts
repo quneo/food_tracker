@@ -16,6 +16,7 @@ import type {
   MealIn,
   MealPatch,
   MealType,
+  Note,
   MealStatus,
   Measurement,
   MeasurementIn,
@@ -86,15 +87,25 @@ export const mealsApi = {
 
 /** A meal sent from the «Записать» form: the assistant estimates it in the background. */
 export const assistantApi = {
-  logMeal: (data: { text: string; mode: RecordMode; photos: Blob[] }) => {
+  logMeal: (data: { text: string; mode: RecordMode; photos: Blob[]; noteId?: number | null }) => {
     const form = new FormData()
     form.append('text', data.text)
     form.append('mode', data.mode)
+    if (data.noteId) form.append('note_id', String(data.noteId))
     data.photos.forEach((photo, index) => form.append('photos', photo, `photo-${index + 1}.jpg`))
     return api<AssistantJob>('/assistant/meals', { method: 'POST', body: form })
   },
   job: (id: number, { signal }: Signal = {}) =>
     api<AssistantJob>(`/assistant/jobs/${id}`, { signal }),
+}
+
+export const notesApi = {
+  list: ({ signal }: Signal = {}) => api<Note[]>('/notes', { signal }),
+  create: (data: { text: string; meal_type: MealType | null }) =>
+    api<Note>('/notes', json('POST', data)),
+  update: (id: number, data: { text?: string; meal_type?: MealType | null }) =>
+    api<Note>(`/notes/${id}`, json('PATCH', data)),
+  remove: (id: number) => api<void>(`/notes/${id}`, { method: 'DELETE' }),
 }
 
 export const productsApi = {

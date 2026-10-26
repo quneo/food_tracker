@@ -21,6 +21,7 @@ COMMANDS = [
     BotCommand(command="new", description="Новая сессия с ассистентом"),
     BotCommand(command="end", description="Завершить сессию"),
     BotCommand(command="today", description="Итоги дня"),
+    BotCommand(command="note", description="Заметка: граммы на потом"),
     BotCommand(command="review", description="Разбор рациона"),
     BotCommand(command="progress", description="Сохранить фото прогресса"),
     BotCommand(command="app", description="Дневник на сайте"),
@@ -77,6 +78,20 @@ async def help_(message: Message, bot: Bot):
 @router.message(Command("today"))
 async def today(message: Message, bot: Bot):
     await reply(message, bot, backend.call, "GET", "bot/today", message.from_user.id)
+
+
+@router.message(Command("note"))
+async def note(message: Message, command: CommandObject, bot: Bot):
+    """/note 130 грудка, 150 рис: food weighed now, eaten later."""
+    await reply(
+        message,
+        bot,
+        backend.call,
+        "POST",
+        "bot/note",
+        message.from_user.id,
+        json={"text": command.args},
+    )
 
 
 @router.message(Command("review"))

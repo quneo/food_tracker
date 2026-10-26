@@ -14,6 +14,7 @@ import { ThemeToggle } from '@/components/shared/ThemeToggle'
 import { AppMark } from '@/components/shared/AppMark'
 import { MealSheetHost } from '@/components/meals/MealSheet'
 import { RecordSheetHost, useRecordParam } from '@/components/record/RecordSheet'
+import { NoteSheetHost } from '@/components/notes/NoteSheet'
 
 const LINKS = [
   { to: '/', label: 'Сегодня', title: 'Сегодня', icon: House },
@@ -75,6 +76,7 @@ export function AppShell() {
       </main>
       <MealSheetHost />
       <RecordSheetHost />
+      <NoteSheetHost />
     </div>
   )
 }

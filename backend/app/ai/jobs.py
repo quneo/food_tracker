@@ -28,6 +28,8 @@ from app.database import SessionLocal, utcnow
 from app.media import images
 from app.media.models import Media
 from app.media.storage import StorageError, get_storage
+from app.notes import service as weigh_notes
+from app.notes.models import WeighNote
 from app.users.models import User
 
 log = logging.getLogger(__name__)
@@ -214,6 +216,10 @@ class Worker:
             focus = state.focus_meal_id if state else None
             outcome = Executor(db, user, list(photos), answer.model, focus).run(result)
             if web:
+                note_id = (job.result or {}).get("note_id")
+                note = db.get(WeighNote, note_id) if note_id else None
+                if note and note.user_id == user.id and note.status == "active" and outcome.meals:
+                    weigh_notes.use(note, outcome.meals[0])
                 # The site asks for the outcome itself; nothing goes to Telegram.
                 job.result = {
                     **(job.result or {}),

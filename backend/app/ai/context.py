@@ -12,6 +12,7 @@ from app.ai import memory
 from app.ai.models import MemoryFact
 from app.chat.models import ChatMessage, ChatSession, ChatState
 from app.core.timeutil import local_now, to_local, zone
+from app.notes import service as notes
 from app.nutrition.models import Meal, MealItem
 from app.nutrition.targets import age, suggest
 from app.progress.models import MEASUREMENTS, Measurement, ProgressPhoto, WeightEntry
@@ -89,6 +90,7 @@ class Context:
             self.section_now(),
             self.section_profile(),
             self.section_today(),
+            self.section_notes(),
             "" if self.web_mode else self.section_drafts(),
             self.section_mentioned_days(),
             self.section_similar_meals(),
@@ -298,6 +300,20 @@ class Context:
             if value <= self.today:
                 days.add(value)
         return sorted(day for day in days if day < self.today - timedelta(days=2))
+
+    def section_notes(self) -> str:
+        """Food weighed in advance: the grams the user will eat at a coming meal."""
+        waiting = notes.active(self.db, self.user.id)
+        lines = []
+        for note in waiting:
+            now = " (пора: сейчас время этого приема)" if notes.is_due(note) else ""
+            text = note.text.replace("\n", " / ")
+            lines.append(f"- [note {note.id}] {notes.label(note, self.tz)}{now}: {text}")
+        if not lines:
+            return ""
+        return "## Заметки о взвешивании (взвешено заранее, в дневнике еще нет)\n" + "\n".join(
+            lines
+        )
 
     def section_mentioned_days(self) -> str:
         lines = []

@@ -13,6 +13,7 @@ from app.database import SessionLocal, utcnow
 from app.media import service as media
 from app.media.models import Media
 from app.media.storage import get_storage
+from app.notes.models import WeighNote
 from app.reminders import service as reminders
 from app.users import service as users
 from app.users.models import LoginRequest, WebSession
@@ -50,6 +51,8 @@ def hourly():
         db.execute(
             update(AiJob).where(AiJob.finished_at < now - timedelta(days=30)).values(result=None)
         )
+        # Weigh notes are only for the next meal: a month later nobody needs them.
+        db.execute(delete(WeighNote).where(WeighNote.created_at < now - timedelta(days=30)))
         # Photos sent in the chat that turned out to be neither food nor progress.
         stale = db.scalars(
             select(Media).where(Media.kind == "chat", Media.created_at < now - UNUSED_CHAT_PHOTOS)

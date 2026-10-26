@@ -13,6 +13,7 @@ from app.chat.models import ChatMessage
 from app.config import get_settings
 from app.core.exceptions import DomainError, NotFound
 from app.media import service as media
+from app.notes import service as notes
 from app.nutrition import service as nutrition
 from app.nutrition.models import Meal
 from app.nutrition.schemas import MealOut
@@ -53,6 +54,7 @@ def log_meal(
     files: Files,
     text: str = Form(default="", max_length=2000),
     mode: Literal["food", "label"] = Form(default="food"),
+    note_id: int | None = Form(default=None),
     photos: list[UploadFile] = File(default=[]),
 ):
     text = text.strip()
@@ -62,12 +64,20 @@ def log_meal(
         raise DomainError(f"Не больше {MAX_PHOTOS} фото за раз")
     if get_settings().ai_runner == "off":
         raise DomainError("Ассистент пока не подключен. Запишите прием пищи вручную", 503)
+    if note_id is not None:
+        # Written from a weigh note: it is marked used once the meal is recorded.
+        notes.usable(db, note_id, user.id)
     message = ChatMessage(user_id=user.id, role="user", text=text, photos=len(photos))
     db.add(message)
     db.flush()
     for photo in photos:
         media.save_photo(db, files, user.id, photo.file.read(), "chat", message_id=message.id)
-    job = AiJob(user_id=user.id, message_id=message.id, kind="web", result={"mode": mode})
+    job = AiJob(
+        user_id=user.id,
+        message_id=message.id,
+        kind="web",
+        result={"mode": mode, "note_id": note_id},
+    )
     db.add(job)
     db.commit()
     worker.wake()

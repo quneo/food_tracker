@@ -5,6 +5,7 @@ import {
   Camera,
   Check,
   ImagePlus,
+  NotebookPen,
   PencilLine,
   ScanLine,
   Sparkles,
@@ -14,7 +15,7 @@ import {
   X,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { assistantApi, mealsApi } from '@/api/endpoints'
+import { assistantApi, mealsApi, notesApi } from '@/api/endpoints'
 import { invalidateMeals, keys } from '@/api/keys'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -26,8 +27,9 @@ import { Photo } from '@/components/shared/Photo'
 import { shrinkPhoto } from '@/lib/images'
 import { itemWeight, num } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { useNoteParam } from '@/components/notes/NoteSheet'
 import { ProductPick } from './ProductPick'
-import type { AssistantJob, Meal, RecordMode } from '@/types'
+import type { AssistantJob, Meal, Note, RecordMode } from '@/types'
 
 export type RecordTab = 'photo' | 'label' | 'product' | 'manual'
 const TABS: { value: RecordTab; label: string; icon: typeof Camera }[] = [
@@ -52,14 +54,16 @@ export function useRecordParam() {
   const raw = params.get('record')
   const tab = TABS.some((item) => item.value === raw) ? (raw as RecordTab) : null
 
+  /** `note`: logging the food of a weigh note, its grams already in the text. */
   const open = useCallback(
-    (value: RecordTab = 'photo') => {
+    (value: RecordTab = 'photo', options: { note?: Note } = {}) => {
       const next = new URLSearchParams(location.search)
       next.set('record', value)
-      navigate({ search: next.toString() }, { state: { recordOpened: true } })
+      navigate({ search: next.toString() }, { state: { recordOpened: true, note: options.note } })
     },
     [location.search, navigate],
   )
+  const note = (location.state as { note?: Note } | null)?.note ?? null
   const setTab = useCallback(
     (value: RecordTab) => {
       const next = new URLSearchParams(location.search)
@@ -88,11 +92,11 @@ export function useRecordParam() {
     },
     [location.search, navigate],
   )
-  return { tab, open, setTab, close, editMeal }
+  return { tab, open, setTab, close, editMeal, note }
 }
 
 export function RecordSheetHost() {
-  const { tab, setTab, close, editMeal } = useRecordParam()
+  const { tab, setTab, close, editMeal, note } = useRecordParam()
   // The job outlives a closed sheet: reopening shows how it went.
   const [job, setJob] = useState<Job | null>(null)
   const changeJob = useCallback((next: Job | null) => {
@@ -116,6 +120,7 @@ export function RecordSheetHost() {
           onEdit={editMeal}
           job={job}
           onJob={changeJob}
+          note={note}
         />
       )}
     </ResponsiveSheet>
@@ -129,6 +134,7 @@ function RecordFlow({
   onEdit,
   job,
   onJob,
+  note,
 }: {
   tab: RecordTab
   onTab: (tab: RecordTab) => void
@@ -136,6 +142,7 @@ function RecordFlow({
   onEdit: (id: number) => void
   job: Job | null
   onJob: (job: Job | null) => void
+  note: Note | null
 }) {
   if (job)
     return (
@@ -165,7 +172,12 @@ function RecordFlow({
         ))}
       </div>
       {tab === 'photo' || tab === 'label' ? (
-        <PhotoCompose key={tab} mode={tab === 'label' ? 'label' : 'food'} onJob={onJob} />
+        <PhotoCompose
+          key={tab}
+          mode={tab === 'label' ? 'label' : 'food'}
+          onJob={onJob}
+          note={tab === 'photo' ? note : null}
+        />
       ) : tab === 'product' ? (
         <ProductPick onDone={onClose} />
       ) : (
@@ -179,12 +191,33 @@ function RecordFlow({
   )
 }
 
-function PhotoCompose({ mode, onJob }: { mode: RecordMode; onJob: (job: Job) => void }) {
+function PhotoCompose({
+  mode,
+  onJob,
+  note,
+}: {
+  mode: RecordMode
+  onJob: (job: Job) => void
+  note: Note | null
+}) {
   const client = useQueryClient()
   const camera = useRef<HTMLInputElement>(null)
   const gallery = useRef<HTMLInputElement>(null)
+  const later = useNoteParam()
   const [files, setFiles] = useState<File[]>([])
-  const [text, setText] = useState('')
+  const [text, setText] = useState(note?.text ?? '')
+  // The weigh note this meal is made from: it is used up once the meal is recorded.
+  const [noteId, setNoteId] = useState<number | null>(note?.id ?? null)
+  const notes = useQuery({
+    queryKey: keys.notes,
+    queryFn: ({ signal }) => notesApi.list({ signal }),
+    enabled: mode === 'food',
+  })
+  const due = (notes.data ?? []).filter((item) => item.due && item.id !== noteId)
+  const take = (item: Note) => {
+    setNoteId(item.id)
+    setText((current) => (current.trim() ? `${item.text}\n${current}` : item.text))
+  }
   const [over, setOver] = useState(false)
   const previews = useMemo(() => files.map((file) => URL.createObjectURL(file)), [files])
   useEffect(() => () => previews.forEach((url) => URL.revokeObjectURL(url)), [previews])
@@ -198,6 +231,7 @@ function PhotoCompose({ mode, onJob }: { mode: RecordMode; onJob: (job: Job) => 
       assistantApi.logMeal({
         text,
         mode,
+        noteId,
         photos: await Promise.all(files.map((file) => shrinkPhoto(file))),
       }),
     onSuccess: (job) => {
@@ -216,6 +250,24 @@ function PhotoCompose({ mode, onJob }: { mode: RecordMode; onJob: (job: Job) => 
         if (ready) send.mutate()
       }}
     >
+      {due.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {due.map((item) => (
+            <div
+              key={item.id}
+              className="flex items-start gap-3 rounded-[18px] border border-primary/40 bg-lime-soft p-3"
+            >
+              <span className="min-w-0 flex-1 text-sm">
+                <span className="block font-medium">Заметка {item.label}</span>
+                <span className="block whitespace-pre-line text-muted-foreground">{item.text}</span>
+              </span>
+              <Button type="button" size="sm" onClick={() => take(item)}>
+                Взять
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
       {files.length === 0 ? (
         <div
           className={cn('drop-zone', over && 'is-over')}
@@ -283,8 +335,19 @@ function PhotoCompose({ mode, onJob }: { mode: RecordMode; onJob: (job: Job) => 
         </div>
       )}
       <label className="flex flex-col gap-2">
-        <span className="text-sm font-medium">
+        <span className="flex items-center justify-between gap-2 text-sm font-medium">
           {label ? 'Сколько съели' : files.length ? 'Подсказка ассистенту' : 'Или опишите словами'}
+          {noteId !== null && (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-1 text-xs text-accent-foreground"
+              onClick={() => setNoteId(null)}
+              aria-label="Записать не по заметке"
+            >
+              По заметке
+              <X className="size-3.5" aria-hidden="true" />
+            </button>
+          )}
         </span>
         <Textarea
           value={text}
@@ -304,6 +367,13 @@ function PhotoCompose({ mode, onJob }: { mode: RecordMode; onJob: (job: Job) => 
         <Sparkles />
         {send.isPending ? 'Отправляю…' : 'Посчитать'}
       </Button>
+      {!label && noteId === null && files.length === 0 && text.trim() && (
+        // Weighed now, eaten later: the grams go to a note instead.
+        <Button type="button" variant="ghost" onClick={() => later.open('new', text, true)}>
+          <NotebookPen />
+          Съем позже — сохранить заметкой
+        </Button>
+      )}
       <input
         ref={camera}
         type="file"

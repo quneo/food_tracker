@@ -156,6 +156,21 @@ export interface DaySummary {
   drafts: number
 }
 
+/** Grams written down while weighing, waiting for the meal they are for. */
+export interface Note {
+  id: number
+  text: string
+  /** null: within a few hours. */
+  meal_type: MealType | null
+  /** Its meal's time has come. */
+  due: boolean
+  /** "на обед, сегодня", "на ближайшие часы, до 14:30". */
+  label: string
+  due_from: string
+  expires_at: string
+  source: 'web' | 'bot' | 'ai'
+}
+
 /** What the photos sent to the assistant show. */
 export type RecordMode = 'food' | 'label'
 

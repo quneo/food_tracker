@@ -26,6 +26,7 @@ from app.ai.schemas import (
     LogWeight,
     MealEstimate,
     Remember,
+    SaveNote,
     SaveProduct,
     SaveProgressPhoto,
     SetReminder,
@@ -40,6 +41,7 @@ from app.core.exceptions import DomainError
 from app.core.timeutil import local_today, parse_local, to_local, valid_zone, zone
 from app.database import utcnow
 from app.media.models import Media
+from app.notes import service as notes
 from app.nutrition import products as product_store
 from app.nutrition import service as nutrition
 from app.nutrition.models import Meal, Product
@@ -65,6 +67,7 @@ REFUSED = {
     "save_product": "Не сохранил продукт",
     "update_profile": "Не обновил профиль",
     "set_reminder": "Не поставил напоминание",
+    "save_note": "Не сохранил заметку",
 }
 
 
@@ -111,6 +114,7 @@ class Executor:
             "delete_reminder": self.delete_reminder,
             "save_product": self.save_product,
             "delete_product": self.delete_product,
+            "save_note": self.save_note,
         }
         for action in result.actions[:12]:
             try:
@@ -207,6 +211,12 @@ class Executor:
             photo.kind = "meal"
             photo.meal_id = meal.id
         self.photos = [photo for photo in self.photos if photo not in photos]
+        if action.note_id:
+            try:
+                notes.use(notes.usable(self.db, action.note_id, self.user.id), meal.id)
+            except DomainError:
+                # A stale note never costs the meal itself.
+                log.info("note %s not usable for meal %s", action.note_id, meal.id)
         self.db.flush()
         self.db.refresh(meal)
         self.card(meal)
@@ -326,6 +336,11 @@ class Executor:
         )
 
     # Memory and settings
+
+    def save_note(self, action: SaveNote):
+        note = notes.create(self.db, self.user, action.text, action.meal_type, "ai")
+        when = notes.label(note, zone(self.tz_name))
+        self.out.notes.append(f"📝 Заметка {when}: {note.text}")
 
     def remember(self, action: Remember):
         fact = memory.add(self.db, self.user.id, action.category, action.text, "ai")

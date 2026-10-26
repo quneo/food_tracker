@@ -12,4 +12,7 @@ and want what they ate recorded.
 - «Что на фото» tells what the photos show. «еда»: a plate or a dish. «этикетка»: the
   package or nutrition label of what was eaten; read the values per 100 g from it and take
   the amount from the text; with no amount given, take one usual portion and say so.
+- The text may come from one of the user's weigh notes: its grams are stated
+  (grams_source "stated"); set `note_id` when it matches a note in «Заметки о
+  взвешивании».
 - `reply`: empty, or one short sentence when there is something the card cannot say.

@@ -11,6 +11,8 @@ Callback data (64 bytes max):
   s:pr:<msg>  file that message's photos as progress   aw:x  cancel a number prompt
   rv:<days>   review the diet (opens a session)          h:help  how to use
   pin:reset / pin:keep  forgotten photo code           p:x  cancel /progress
+  n:t:<id>:<b|l|d|s|x>  weigh note for a meal (x = soon)  n:x:<id>  delete a note
+  n:go:<id>   log the meal from a note now (opens a session)
 """
 
 from datetime import date
@@ -19,11 +21,20 @@ from html import escape
 from app.chat.outbox import view
 from app.config import get_settings
 from app.core.timeutil import to_local, zone
+from app.notes import service as notes
+from app.notes.models import WeighNote
 from app.nutrition.models import Meal
 
 MEAL_TYPES = {"breakfast": "Завтрак", "lunch": "Обед", "dinner": "Ужин", "snack": "Перекус"}
 MEAL_ICONS = {"breakfast": "🍳", "lunch": "🍲", "dinner": "🍽", "snack": "🍏"}
 TYPE_CODES = {"b": "breakfast", "l": "lunch", "d": "dinner", "s": "snack"}
+NOTE_TARGETS = [
+    ("🍳 Завтрак", "b"),
+    ("🍲 Обед", "l"),
+    ("🍽 Ужин", "d"),
+    ("🍏 Перекус", "s"),
+    ("⏱ 3 часа", "x"),
+]
 CONFIDENCE = {"low": "низкая", "medium": "средняя", "high": "высокая"}
 MONTHS = [
     "января", "февраля", "марта", "апреля", "мая", "июня",
@@ -221,3 +232,46 @@ def today_view(summary: dict, today: date, weight=None, change=None) -> dict:
         lines += ["", f"⚖️ {n(weight.weight_kg, 1)} кг{delta}"]
     link = site_button("Открыть дневник", "/")
     return view("\n".join(lines), [[link]] if link else [])
+
+
+def note_line(note: WeighNote, tz) -> str:
+    """ "📝 на обед, сегодня: 130 грудка / 150 рис" for lists."""
+    text = note.text.replace("\n", " / ")
+    text = text if len(text) <= 80 else text[:80] + "…"
+    return f"📝 {escape(notes.label(note, tz))}: {escape(text)}"
+
+
+def note_view(note: WeighNote, tz_name: str, head: str = "Заметка") -> dict:
+    """A weigh note: what it is for, the grams, and buttons to move it to another meal,
+    log it now or drop it."""
+    tz = zone(tz_name)
+    due = notes.is_due(note)
+    hint = (
+        "Пора есть: «▶️ Учесть сейчас» посчитает и запишет. В сессии можно и словами: "
+        "«обед по заметке», или пришлите фото."
+        if due
+        else "Всплывет к этому приему, в сессии ассистент учтет граммы сам. Другой прием — "
+        "кнопками ниже."
+    )
+    text = (
+        f"📝 <b>{escape(head)}</b> {escape(notes.label(note, tz))}\n\n"
+        f"{escape(note.text)}\n\n<i>{hint}</i>"
+    )
+    current = next(
+        (code for code, kind in {**TYPE_CODES, "x": None}.items() if kind == note.meal_type), "x"
+    )
+    targets = [
+        button(("✓ " if code == current else "") + label, f"n:t:{note.id}:{code}")
+        for label, code in NOTE_TARGETS
+    ]
+    return view(
+        text,
+        [
+            targets[:3],
+            targets[3:],
+            [
+                button("▶️ Учесть сейчас", f"n:go:{note.id}", "success"),
+                button("🗑", f"n:x:{note.id}"),
+            ],
+        ],
+    )

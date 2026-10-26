@@ -667,6 +667,12 @@
   width: 16px;
   height: 16px;
 }
+/* On a sheet's plain background the frosted chip would vanish: give it an edge. */
+[data-slot='drawer-content'] .chip:not([aria-pressed='true']),
+[data-slot='dialog-content'] .chip:not([aria-pressed='true']) {
+  border-color: var(--border);
+  background: var(--muted);
+}
 
 /* Numbers */
 .tabular {

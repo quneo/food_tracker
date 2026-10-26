@@ -20,6 +20,7 @@ export const keys = {
   reminders: ['reminders'] as const,
   memory: ['memory'] as const,
   products: ['products'] as const,
+  notes: ['notes'] as const,
   chat: ['chat'] as const,
   admin: ['admin'] as const,
 }
@@ -28,9 +29,17 @@ function invalidate(client: QueryClient, list: readonly (readonly unknown[])[]) 
   return Promise.all(list.map((queryKey) => client.invalidateQueries({ queryKey })))
 }
 
-/** Everything that shows meals or numbers made from them. */
+/** Everything that shows meals or numbers made from them (a meal may use up a note). */
 export const invalidateMeals = (client: QueryClient) =>
-  invalidate(client, [keys.today, ['day'], keys.meals, ['meal'], keys.daily, keys.report])
+  invalidate(client, [
+    keys.today,
+    ['day'],
+    keys.meals,
+    ['meal'],
+    keys.daily,
+    keys.report,
+    keys.notes,
+  ])
 
 /** Everything that shows weight, measurements or progress photos. */
 export const invalidateBody = (client: QueryClient) =>

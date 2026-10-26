@@ -69,6 +69,11 @@ class CreateMeal(Strict):
     kind: Literal["create_meal"]
     meal: MealEstimate
     use_photos: bool = Field(description="Attach the photos of the current message to this meal.")
+    note_id: int | None = Field(
+        default=None,
+        description="The weigh note ([note N]) whose grams this meal uses; the app then "
+        "marks it used. Null when no note is behind this meal.",
+    )
 
 
 class ItemChange(Strict):
@@ -222,6 +227,16 @@ class DeleteProduct(Strict):
     product_id: int
 
 
+class SaveNote(Strict):
+    """Food weighed now to be eaten later: the grams wait for that meal."""
+
+    kind: Literal["save_note"]
+    text: str = Field(description="What was weighed, as the user wrote it: one food per line.")
+    meal_type: Literal["breakfast", "lunch", "dinner", "snack"] | None = Field(
+        description="The next meal of this kind it is for; null = within a few hours."
+    )
+
+
 Action = Annotated[
     CreateMeal
     | EditMeal
@@ -238,6 +253,7 @@ Action = Annotated[
     | SetReminder
     | DeleteReminder
     | SaveProduct
+    | SaveNote
     | DeleteProduct,
     Field(discriminator="kind"),
 ]

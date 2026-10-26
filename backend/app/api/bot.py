@@ -119,6 +119,16 @@ def help_(user: BotUser, db: Db):
     return {"view": service.help_view(db, user)}
 
 
+class NoteIn(BaseModel):
+    text: str | None = Field(default=None, max_length=1000)
+
+
+@router.post("/note")
+def note(data: NoteIn, user: BotUser, db: Db):
+    """/note [what was weighed]."""
+    return {"view": service.note_command(db, user, data.text)}
+
+
 @router.post("/progress-mode")
 def progress_mode(user: BotUser, db: Db):
     return {"view": service.progress_mode(db, user)}
